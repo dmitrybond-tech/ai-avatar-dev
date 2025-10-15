@@ -25,7 +25,7 @@ import AvatarChat from '@/features/avatar-chat/AvatarChat.astro';
 
 <script>
   import { WsClient, RestClient } from '@ai-avatar/clients';
-  import { config } from '@/shared/lib/config';
+  import { config } from '@/shared/lib/config.ts';
 
   class TelegramMiniApp {
     private restClient: RestClient;

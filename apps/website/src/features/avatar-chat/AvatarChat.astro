@@ -101,7 +101,7 @@ import Message from '@/entities/message/Message.astro';
 <script>
   import { WsClient, RestClient } from '@ai-avatar/clients';
   import type { WsEnvelope, ChatMessage } from '@ai-avatar/shared';
-  import { config } from '@/shared/lib/config';
+  import { config } from '@/shared/lib/config.ts';
 
   interface Message {
     role: 'user' | 'assistant';
