@@ -76,8 +76,8 @@ services:
     image: ghcr.io/${GITHUB_REPOSITORY:-ai-avatar}/website:${IMAGE_TAG:-latest}
     container_name: ai-avatar-website
     build:
-      context: ../../apps/website
-      dockerfile: Dockerfile
+      context: ../../
+      dockerfile: apps/website/Dockerfile
       args:
         PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8080}
     pull_policy: never

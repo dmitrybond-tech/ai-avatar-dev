@@ -4,9 +4,9 @@ FROM node:20-alpine AS builder
 WORKDIR /workspace
 
 # Copy workspace files from monorepo root
-COPY ../../package.json ../../pnpm-workspace.yaml ./
-COPY ../../packages ./packages
-COPY . ./apps/website
+COPY package.json pnpm-workspace.yaml ./
+COPY packages ./packages
+COPY apps/website ./apps/website
 
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
