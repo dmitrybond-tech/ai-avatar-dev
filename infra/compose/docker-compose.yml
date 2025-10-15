@@ -41,6 +41,7 @@ services:
       dockerfile: Dockerfile
     # локально, чтобы не тянул GHCR и не кидал warning:
     pull_policy: never
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--app-dir", "/app/src"]
     environment:
       API_HOST: ${API_HOST}
       API_PORT: ${API_PORT}
