@@ -1,0 +1,54 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import TalkingHead from '@/features/talking-head/TalkingHead.astro';
+import AvatarChat from '@/features/avatar-chat/AvatarChat.astro';
+---
+
+<Layout title="AI Avatar">
+  <main class="container">
+    <header class="header">
+      <h1>AI Avatar</h1>
+      <p>Chat with your AI assistant</p>
+    </header>
+
+    <div class="content">
+      <TalkingHead />
+      <AvatarChat />
+    </div>
+  </main>
+</Layout>
+
+<style>
+  .container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .header {
+    text-align: center;
+    padding: 2rem 1rem 1rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+  }
+
+  .header h1 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .header p {
+    font-size: 1rem;
+    opacity: 0.9;
+  }
+
+  .content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+</style>
+

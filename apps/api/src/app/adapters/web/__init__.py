@@ -1,0 +1,2 @@
+"""Web adapters (HTTP + WebSocket)."""
+

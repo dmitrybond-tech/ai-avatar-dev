@@ -1,0 +1,106 @@
+---
+// Simple talking head animation component
+---
+
+<div class="talking-head" id="talking-head">
+  <div class="head">
+    <div class="eyes">
+      <div class="eye"></div>
+      <div class="eye"></div>
+    </div>
+    <div class="mouth" id="mouth"></div>
+  </div>
+</div>
+
+<style>
+  .talking-head {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+  }
+
+  .head {
+    position: relative;
+    width: 120px;
+    height: 150px;
+    background: linear-gradient(135deg, #ffd89b 0%, #ff9a76 100%);
+    border-radius: 50% 50% 45% 45%;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  .eyes {
+    display: flex;
+    justify-content: space-around;
+    padding: 35px 25px 0;
+  }
+
+  .eye {
+    width: 14px;
+    height: 14px;
+    background: #333;
+    border-radius: 50%;
+  }
+
+  .mouth {
+    position: absolute;
+    bottom: 35px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 20px;
+    border: 3px solid #333;
+    border-top: none;
+    border-radius: 0 0 40px 40px;
+    transition: height 0.1s ease;
+  }
+
+  .mouth.talking {
+    animation: talk 0.3s infinite alternate;
+  }
+
+  @keyframes talk {
+    0% {
+      height: 20px;
+    }
+    100% {
+      height: 30px;
+    }
+  }
+</style>
+
+<script>
+  // Control talking head animation based on audio playback
+  class TalkingHeadController {
+    private mouth: HTMLElement | null;
+
+    constructor() {
+      this.mouth = document.getElementById('mouth');
+      this.setupListeners();
+    }
+
+    private setupListeners() {
+      window.addEventListener('audio-play', () => this.startTalking());
+      window.addEventListener('audio-pause', () => this.stopTalking());
+      window.addEventListener('audio-ended', () => this.stopTalking());
+    }
+
+    private startTalking() {
+      this.mouth?.classList.add('talking');
+    }
+
+    private stopTalking() {
+      this.mouth?.classList.remove('talking');
+    }
+  }
+
+  // Initialize on load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      new TalkingHeadController();
+    });
+  } else {
+    new TalkingHeadController();
+  }
+</script>
+

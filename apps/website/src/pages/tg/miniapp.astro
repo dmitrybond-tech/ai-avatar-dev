@@ -1,0 +1,141 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import TalkingHead from '@/features/talking-head/TalkingHead.astro';
+import AvatarChat from '@/features/avatar-chat/AvatarChat.astro';
+---
+
+<Layout title="AI Avatar - Telegram">
+  <main class="container" id="tg-container">
+    <div class="loading" id="loading">
+      <p>Connecting to Telegram...</p>
+    </div>
+
+    <div class="content" id="content" style="display: none;">
+      <header class="header">
+        <h1>AI Avatar</h1>
+      </header>
+
+      <TalkingHead />
+      <AvatarChat />
+    </div>
+  </main>
+</Layout>
+
+<script is:inline src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<script>
+  import { WsClient, RestClient } from '@ai-avatar/clients';
+  import { config } from '@/shared/lib/config';
+
+  class TelegramMiniApp {
+    private restClient: RestClient;
+    private sessionToken: string | null = null;
+
+    constructor() {
+      this.restClient = new RestClient(config.apiBaseUrl);
+      this.init();
+    }
+
+    private async init() {
+      // Wait for Telegram WebApp to be ready
+      if (!window.Telegram?.WebApp) {
+        console.error('Telegram WebApp not available');
+        document.getElementById('loading')!.innerHTML = '<p>Error: Not running in Telegram</p>';
+        return;
+      }
+
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
+
+      // Apply theme
+      this.applyTheme(tg);
+
+      // Verify with backend
+      try {
+        const initData = tg.initData;
+        if (!initData) {
+          throw new Error('No initData available');
+        }
+
+        const response = await this.restClient.verifyTelegram({ init_data: initData });
+        this.sessionToken = response.session_token;
+
+        // Update WebSocket config with token
+        this.updateWsClientWithToken(response.session_token);
+
+        // Hide loading, show content
+        document.getElementById('loading')!.style.display = 'none';
+        document.getElementById('content')!.style.display = 'flex';
+      } catch (error) {
+        console.error('Telegram verification failed:', error);
+        document.getElementById('loading')!.innerHTML = '<p>Verification failed. Please try again.</p>';
+      }
+    }
+
+    private applyTheme(tg: any) {
+      const container = document.getElementById('tg-container')!;
+      const isDark = tg.colorScheme === 'dark';
+
+      if (isDark) {
+        container.style.background = '#1f2937';
+        container.style.color = '#f9fafb';
+      } else {
+        container.style.background = '#ffffff';
+        container.style.color = '#1f2937';
+      }
+    }
+
+    private updateWsClientWithToken(token: string) {
+      // This is a bit hacky - we need to update the WsClient config
+      // In a real app, you'd pass this via a proper state management
+      const wsUrl = `${config.wsUrl}?token=${token}`;
+      console.log('WebSocket will connect with token');
+      // The AvatarChat component will handle the actual connection
+    }
+  }
+
+  // Initialize when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      new TelegramMiniApp();
+    });
+  } else {
+    new TelegramMiniApp();
+  }
+</script>
+
+<style>
+  .container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    font-size: 1.2rem;
+  }
+
+  .content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .header {
+    text-align: center;
+    padding: 1.5rem 1rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+  }
+
+  .header h1 {
+    font-size: 1.5rem;
+  }
+</style>
+

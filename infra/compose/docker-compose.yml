@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ai-avatar-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-avatar-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/${GITHUB_REPOSITORY:-ai-avatar}/api:${IMAGE_TAG:-latest}
+    container_name: ai-avatar-api
+    build:
+      context: ../../
+      dockerfile: apps/api/Dockerfile
+    environment:
+      API_HOST: ${API_HOST}
+      API_PORT: ${API_PORT}
+      WEBSITE_ORIGIN: ${WEBSITE_ORIGIN}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_TTL_SECONDS: ${JWT_TTL_SECONDS}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      LLM_API_KEY: ${LLM_API_KEY}
+      TTS_PROVIDER: ${TTS_PROVIDER}
+      TTS_API_KEY: ${TTS_API_KEY}
+      TTS_VOICE_PRESET: ${TTS_VOICE_PRESET}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      - tts_data:/data/tts
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  website:
+    image: ghcr.io/${GITHUB_REPOSITORY:-ai-avatar}/website:${IMAGE_TAG:-latest}
+    container_name: ai-avatar-website
+    build:
+      context: ../../
+      dockerfile: apps/website/Dockerfile
+    environment:
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8080}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  telegram:
+    image: ghcr.io/${GITHUB_REPOSITORY:-ai-avatar}/telegram:${IMAGE_TAG:-latest}
+    container_name: ai-avatar-telegram
+    build:
+      context: ../../
+      dockerfile: apps/telegram/Dockerfile
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
+      TG_WEBAPP_URL: ${TG_WEBAPP_URL}
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  tts_data:
+

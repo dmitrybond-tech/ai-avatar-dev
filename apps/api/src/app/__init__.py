@@ -1,0 +1,2 @@
+"""AI Avatar API application."""
+

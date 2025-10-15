@@ -1,0 +1,51 @@
+---
+interface Props {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+const { role, content } = Astro.props;
+---
+
+<div class:list={['message', `message-${role}`]}>
+  <div class="message-role">{role === 'user' ? 'You' : 'Avatar'}</div>
+  <div class="message-content">{content}</div>
+</div>
+
+<style>
+  .message {
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border-radius: 0.75rem;
+    max-width: 80%;
+  }
+
+  .message-user {
+    align-self: flex-end;
+    background: #4f46e5;
+    color: white;
+    margin-left: auto;
+  }
+
+  .message-assistant {
+    align-self: flex-start;
+    background: #f3f4f6;
+    color: #1f2937;
+  }
+
+  .message-role {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+    opacity: 0.8;
+  }
+
+  .message-content {
+    font-size: 1rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+</style>
+
