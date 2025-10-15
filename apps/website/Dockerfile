@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /workspace
 
+# Install git (required by some pnpm dependencies)
+RUN apk add --no-cache git
+
 # Copy workspace files from monorepo root
 COPY package.json pnpm-workspace.yaml ./
 COPY packages ./packages
