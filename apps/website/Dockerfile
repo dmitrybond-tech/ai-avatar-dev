@@ -11,16 +11,17 @@ COPY apps/website ./apps/website
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Install dependencies (no lockfile yet); fallback to npm if pnpm workspace не настроен
+RUN (pnpm -v >/dev/null 2>&1 && pnpm install --no-frozen-lockfile) \
+    || (cd apps/website && (npm ci || npm install))
 
 # Build args for PUBLIC_* env vars (with safe defaults)
 ARG PUBLIC_API_BASE_URL=http://localhost:8080
 ENV PUBLIC_API_BASE_URL=$PUBLIC_API_BASE_URL
 
-# Build website
+# Build website (from app dir)
 WORKDIR /workspace/apps/website
-RUN pnpm build
+RUN (pnpm run build) || (npx astro build || npm run build)
 
 # Production stage
 FROM node:20-alpine
