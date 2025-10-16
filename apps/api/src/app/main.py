@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.settings import settings
 from app.core.logging import setup_logging, get_logger
 from app.db.connection import init_db, close_db
-from app.adapters.web import health, chat, chat_ws, voice, telegram
+from app.adapters.web import health, chat, chat_ws, voice, telegram, chat_stub
 
 setup_logging()
 logger = get_logger(__name__)
@@ -38,9 +38,17 @@ app = FastAPI(
 )
 
 # CORS middleware
+cors_origins = [settings.website_origin, "https://web.telegram.org"]
+
+# Optional: Allow dev CORS (set ALLOW_DEV_CORS=1 for local development)
+import os
+if os.getenv("ALLOW_DEV_CORS") == "1":
+    cors_origins.append("*")
+    logger.warning("Dev CORS enabled - allowing all origins")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.website_origin, "https://web.telegram.org"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,6 +63,7 @@ app.include_router(chat.router, tags=["chat"])
 app.include_router(chat_ws.router, tags=["chat"])
 app.include_router(voice.router, tags=["voice"])
 app.include_router(telegram.router, tags=["telegram"])
+app.include_router(chat_stub.router, tags=["chat-stub"])
 
 
 if __name__ == "__main__":
