@@ -1,0 +1,20 @@
+[Unit]
+Description=Reverse tunnel FRONT (VM:5173 -> VPS:15173)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=deploy
+Environment=VPS_USER=<SET_ME>
+Environment=VPS_IP=<SET_ME>
+ExecStart=/usr/bin/autossh -M 0 -NT \
+  -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+  -o StrictHostKeyChecking=accept-new \
+  -i /home/deploy/.ssh/id_ed25519 \
+  -R 127.0.0.1:15173:127.0.0.1:5173 ${VPS_USER}@${VPS_IP}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+

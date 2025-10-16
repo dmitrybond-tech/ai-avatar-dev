@@ -5,12 +5,16 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  base: '/miniapp/',
   output: 'static',
   server: {
-    port: 3000,
-    host: true,
+    host: '127.0.0.1',
+    port: 5173,
   },
   vite: {
+    server: {
+      strictPort: true,
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

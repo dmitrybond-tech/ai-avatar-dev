@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "pnpm --filter website dev",
     "build": "pnpm -r build",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "dev:miniapp": "pnpm --filter @ai-avatar/website dev:miniapp",
+    "build:miniapp": "pnpm --filter @ai-avatar/website build:miniapp",
+    "preview:miniapp": "pnpm --filter @ai-avatar/website preview:miniapp"
   },
   "engines": {
     "node": ">=20.0.0",
