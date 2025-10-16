@@ -77,10 +77,7 @@ export default function ChatWidget() {
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          text:
-            "Local fallback: I couldn't reach the API. Here's an echo of your message: "" +
-            text +
-            "".",
+          text: `Local fallback: I couldn't reach the API. Here's an echo of your message: "${text}".`,
           ts: Date.now(),
         },
       ]);
