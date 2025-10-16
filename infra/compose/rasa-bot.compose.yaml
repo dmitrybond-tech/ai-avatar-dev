@@ -1,0 +1,50 @@
+# Docker Compose for Rasa OSS Assistant
+# Isolated bot infrastructure - does not affect existing AI Avatar services
+# Use: docker compose -f infra/compose/rasa-bot.compose.yaml up -d
+
+version: '3.8'
+
+services:
+  rasa:
+    image: rasa/rasa:3.6.20
+    container_name: rasa-bot
+    command:
+      - run
+      - --enable-api
+      - --cors
+      - "*"
+      - --port
+      - "5005"
+    volumes:
+      - ../../apps/rasa-bot/rasa:/app
+    ports:
+      - "5005:5005"
+    env_file:
+      - ../../.env.rasa-bot
+    environment:
+      - RASA_LOG_LEVEL=${RASA_LOG_LEVEL:-INFO}
+    depends_on:
+      - actions
+    networks:
+      - rasa-network
+    restart: unless-stopped
+
+  actions:
+    image: rasa/rasa-sdk:3.6.2
+    container_name: rasa-actions
+    volumes:
+      - ../../apps/rasa-bot/actions:/app/actions
+    ports:
+      - "5055:5055"
+    environment:
+      - NOTION_SECRET=${NOTION_SECRET}
+      - NOTION_DB=${NOTION_DB}
+      - CAL_LINK=${CAL_LINK}
+    networks:
+      - rasa-network
+    restart: unless-stopped
+
+networks:
+  rasa-network:
+    driver: bridge
+

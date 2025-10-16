@@ -1,0 +1,65 @@
+# Rasa OSS Assistant NLU Training Data
+# Isolated bot NLU - does not affect existing AI Avatar services
+# Russian language examples
+
+version: "3.1"
+
+nlu:
+- intent: greet
+  examples: |
+    - привет
+    - здравствуй
+    - добрый день
+    - hi
+    - hello
+    - приветствую
+    - здорова
+    - хай
+
+- intent: ask_capability
+  examples: |
+    - умеешь ли ты [kubernetes](skill)?
+    - знаешь ли [python](skill)?
+    - опыт работы с [docker](skill)
+    - владеешь [react](skill)?
+    - есть опыт с [postgresql](skill)?
+    - работал с [terraform](skill)?
+    - умеешь [golang](skill)?
+    - знаком с [aws](skill)?
+    - навыки [fastapi](skill)
+    - опыт [ci/cd](skill)
+    - [typescript](skill) знаешь?
+    - [микросервисы](skill)
+    - можешь [nginx](skill)?
+    - [rabbitmq](skill) используешь?
+    - что с [graphql](skill)?
+    - умеешь [mongodb](skill)
+    - опыт [kafka](skill)
+    - владение [ansible](skill)
+    - [redis](skill) знаешь
+    - работал с [jenkins](skill)
+    - что знаешь про [kubernetes](skill)
+    - расскажи про опыт с [docker](skill)
+    - какой уровень [python](skill)
+    - сколько лет [java](skill)
+    - примеры работы с [react](skill)
+
+- intent: refresh_cache
+  examples: |
+    - /refresh
+    - обновить кеш
+    - refresh
+    - reload
+    - перезагрузи данные
+    - обнови информацию
+    - синхронизируй с notion
+
+- intent: goodbye
+  examples: |
+    - пока
+    - до свидания
+    - bye
+    - goodbye
+    - увидимся
+    - всего доброго
+

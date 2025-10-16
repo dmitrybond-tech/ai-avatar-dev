@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: ../../apps/miniapp-gateway
+      dockerfile: Dockerfile
+    container_name: miniapp-gateway
+    env_file:
+      - .env.miniapp
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/healthz')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  bot:
+    build:
+      context: ../../apps/miniapp-bot
+      dockerfile: Dockerfile
+    container_name: miniapp-bot
+    env_file:
+      - .env.miniapp
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+

@@ -1,0 +1,8 @@
+# Rasa Action Server Dependencies
+# Isolated bot dependencies - does not affect existing AI Avatar services
+# Pinned versions for deterministic builds
+
+rasa-sdk==3.6.2
+rapidfuzz==3.9.6
+requests==2.32.3
+
