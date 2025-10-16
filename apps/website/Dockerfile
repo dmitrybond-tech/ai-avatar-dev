@@ -11,8 +11,12 @@ COPY package.json pnpm-workspace.yaml ./
 COPY packages ./packages
 COPY apps/website ./apps/website
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+# Install pnpm via npm (network-robust, avoids Corepack DNS issues)
+RUN npm config set fund false \
+ && npm config set audit false \
+ && npm i -g pnpm@8.15.0
+# Optional: Use mirror if default registry is flaky
+# RUN npm config set registry https://registry.npmmirror.com && npm i -g pnpm@8.15.0
 
 # Install dependencies (no lockfile yet); fallback to npm if pnpm workspace не настроен
 RUN (pnpm -v >/dev/null 2>&1 && pnpm install --no-frozen-lockfile) \

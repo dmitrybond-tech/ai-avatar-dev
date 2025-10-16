@@ -6,6 +6,16 @@
 
 ---
 
+## 📋 Important Documentation
+
+- **[BUILD_NOTES.md](docs/BUILD_NOTES.md)** - Docker build troubleshooting for VM deployments
+  - DNS resolution fixes
+  - Network-robust build strategies
+  - Post-receive hook configuration
+  - Diagnostic tools
+
+---
+
 ## Overview
 
 This change introduces a complete Telegram Mini App integration to the AI Avatar monorepo, featuring:

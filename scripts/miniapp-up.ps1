@@ -34,7 +34,7 @@ if (-not (Test-Path $envPath)) {
 
 # Start services with Docker Compose
 Write-Host "🐳 Building and starting containers..." -ForegroundColor Cyan
-docker compose -f $composePath up -d --build
+docker compose -p miniapp -f $composePath up -d --build
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Failed to start services" -ForegroundColor Red
@@ -69,7 +69,7 @@ try {
 } catch {
     Write-Host "⚠️  Could not reach gateway health endpoint" -ForegroundColor Yellow
     Write-Host "   Services may still be starting up. Check logs with:" -ForegroundColor Gray
-    Write-Host "   docker compose -f $composePath logs -f" -ForegroundColor Gray
+        Write-Host "   docker compose -p miniapp -f $composePath logs -f" -ForegroundColor Gray
 }
 
 Write-Host ""

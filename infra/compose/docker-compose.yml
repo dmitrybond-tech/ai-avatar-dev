@@ -63,7 +63,7 @@ services:
       TTS_VOICE_PRESET: ${TTS_VOICE_PRESET}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "${AI_AVATAR_API_PORT:-8081}:8080"
     volumes:
       - tts_data:/data/tts
     depends_on:

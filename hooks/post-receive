@@ -1,0 +1,86 @@
+#!/bin/bash
+# Post-receive hook for VM autobuilds
+# Deploys Stage-0 services (miniapp-gateway + miniapp-bot) with network-robust build settings
+#
+# Installation:
+#   1. Copy to: /path/to/repo.git/hooks/post-receive
+#   2. chmod +x /path/to/repo.git/hooks/post-receive
+#   3. Configure WORK_TREE and COMPOSE_DIR below
+
+set -e
+
+# Configuration
+WORK_TREE="/home/deployer/ai-avatar"
+COMPOSE_DIR="${WORK_TREE}/infra/compose"
+COMPOSE_FILE="miniapp.compose.yaml"
+
+echo "=== AI Avatar VM Deploy ==="
+echo "Post-receive hook triggered at $(date)"
+
+# Ensure PATH includes Docker
+export PATH=/usr/local/bin:/usr/bin:$PATH
+
+# Checkout latest code
+echo "[1/4] Checking out latest code to ${WORK_TREE}..."
+git --work-tree="${WORK_TREE}" --git-dir="${WORK_TREE}.git" checkout -f main
+
+# Build Stage-0 services with host-network for DNS robustness
+echo "[2/4] Building Stage-0 services (gateway + bot) with --network=host..."
+cd "${WORK_TREE}"
+
+# Option A: Using explicit docker build commands
+docker build \
+  --network=host \
+  --build-arg PIP_INDEX_URL=https://pypi.org/simple \
+  -t miniapp-gateway:latest \
+  -f apps/miniapp-gateway/Dockerfile \
+  apps/miniapp-gateway
+
+docker build \
+  --network=host \
+  --build-arg PIP_INDEX_URL=https://pypi.org/simple \
+  -t miniapp-bot:latest \
+  -f apps/miniapp-bot/Dockerfile \
+  apps/miniapp-bot
+
+# Option B: Using docker buildx bake (uncomment if using bake targets)
+# docker buildx bake \
+#   --set miniapp-gateway.network=host \
+#   --set miniapp-bot.network=host \
+#   --set miniapp-gateway.args.PIP_INDEX_URL=https://pypi.org/simple \
+#   --set miniapp-bot.args.PIP_INDEX_URL=https://pypi.org/simple \
+#   --load \
+#   miniapp-gateway miniapp-bot
+
+echo "[3/4] Restarting services..."
+cd "${COMPOSE_DIR}"
+
+# Stop existing containers
+docker compose -f "${COMPOSE_FILE}" down
+
+# Start with built images (--no-build to use images we just built)
+docker compose -f "${COMPOSE_FILE}" up -d --no-build
+
+# Wait for gateway health check
+echo "[4/4] Waiting for services to become healthy..."
+sleep 5
+
+# Verify gateway is responding
+if curl -f http://localhost:8080/healthz >/dev/null 2>&1; then
+  echo "✅ Gateway health check passed"
+else
+  echo "⚠️  Warning: Gateway health check failed (may still be starting)"
+fi
+
+# Show running containers
+echo ""
+echo "=== Service Status ==="
+docker compose -f "${COMPOSE_FILE}" ps
+
+echo ""
+echo "=== Deploy Complete ==="
+echo "Services are running at:"
+echo "  Gateway: http://localhost:8080"
+echo "  Logs: docker compose -f ${COMPOSE_DIR}/${COMPOSE_FILE} logs -f"
+echo ""
+

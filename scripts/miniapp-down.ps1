@@ -7,7 +7,7 @@ $composePath = "infra/compose/miniapp.compose.yaml"
 
 Write-Host "🛑 Stopping Mini App services..." -ForegroundColor Cyan
 
-docker compose -f $composePath down
+docker compose -p miniapp -f $composePath down
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "✅ Services stopped successfully" -ForegroundColor Green
