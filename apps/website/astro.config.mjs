@@ -10,10 +10,17 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: 5173,
+    strictPort: true,
   },
   vite: {
     server: {
-      strictPort: true,
+      allowedHosts: ['miniapp.dmitrybond.tech'],
+      origin: 'https://miniapp.dmitrybond.tech',
+      hmr: {
+        host: 'miniapp.dmitrybond.tech',
+        protocol: 'wss',
+        clientPort: 443,
+      },
     },
     resolve: {
       alias: {
