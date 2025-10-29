@@ -356,7 +356,7 @@ docker compose logs -f
 
 ## 🎯 Telegram MiniApp Deployment
 
-The MiniApp consists of three services: API, Bot, and Web. All components are built deterministically using Dockerfiles with dependencies installed at build-time, not runtime.
+The MiniApp consists of three services: API, Bot, and Web. All components are deployed using pre-built images from GitHub Container Registry (GHCR) for production, with optional local builds for development.
 
 ### MiniApp Components
 
@@ -364,7 +364,7 @@ The MiniApp consists of three services: API, Bot, and Web. All components are bu
 - **Bot** (`apps/miniapp-bot`): Telegram bot using aiogram 3.7 with WebApp button support
 - **Web** (`apps/miniapp-web`): Vite + React frontend served by Nginx
 
-### Quick Start (Docker Compose)
+### Quick Start (Image-based Deployment)
 
 1. **Setup Environment**
 
@@ -374,54 +374,96 @@ cp env.miniapp.example .env.miniapp
 # Edit .env.miniapp and set TELEGRAM_TOKEN (required)
 ```
 
-2. **Build and Start Services**
+2. **Authenticate to GHCR**
 
 ```bash
-# Build images and start all services
-docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
-  --env-file infra/compose/.env.miniapp up -d --build
+# Login to GitHub Container Registry
+docker login ghcr.io -u <your-github-username> -p <your-personal-access-token>
+
+# Your PAT needs 'read:packages' permission
+# Generate at: https://github.com/settings/tokens
 ```
 
-3. **Verify Services**
+3. **Pull and Start Services**
+
+```bash
+# Pull latest images and start all services
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp pull
+
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp up -d
+```
+
+4. **Verify Services**
 
 ```bash
 # Check API health
-curl http://localhost:8080/healthz
+curl http://localhost:8081/healthz
 # Expected: {"status":"ok"}
 
 # Check rules endpoint
-curl http://localhost:8080/rules?lang=ru
+curl http://localhost:8081/rules?lang=ru
 # Expected: JSON with labels and scenes
 
 # Check bot logs
-docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml logs -f bot
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp logs -f bot
 # Expected: Bot shows "online" status, no errors about parse_mode
 
 # Check web (if exposed)
-curl http://localhost:5173
+curl http://localhost:5175
 # Expected: HTML page (200 OK)
 ```
 
-### Production Deployment (Ubuntu VMS with Caddy)
+### Local Development (Build from Source)
+
+For local development, you can build images from source:
+
+```bash
+# Use the build override file
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.build.yml \
+  -f infra/compose/miniapp.runtime.yml --env-file infra/compose/.env.miniapp up -d --build
+```
+
+### Production Deployment (Ubuntu VM with Caddy)
 
 On production, Caddy proxies `miniapp.dmitrybond.tech` to:
 - API: `127.0.0.1:8081` (internal port)
 - Web: `127.0.0.1:5175` (internal port)
 
-**Build & Run:**
+**Deploy with Images:**
 
 ```bash
+# Authenticate to GHCR
+docker login ghcr.io -u <github-username> -p <PAT>
+
+# Deploy using pre-built images
 docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
-  --env-file infra/compose/.env.miniapp up -d --build
+  --env-file infra/compose/.env.miniapp pull
+
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp up -d
 ```
 
 ### Smoke Tests
 
 ```bash
+# Test web app
 curl -sI --http2 https://miniapp.dmitrybond.tech/miniapp/ | egrep -i '^(HTTP/|content-type|cache-control)'
-curl -s  --http2 https://miniapp.dmitrybond.tech/healthz && echo
-curl -s  --http2 'https://miniapp.dmitrybond.tech/rules?lang=ru' | head
-docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml logs -n 120 bot
+
+# Test API health
+curl -s --http2 https://miniapp.dmitrybond.tech/healthz && echo
+# Expected: {"status":"ok"}
+
+# Test API rules endpoint
+curl -s --http2 'https://miniapp.dmitrybond.tech/rules?lang=ru' | head
+# Expected: JSON with labels and scenes
+
+# Check bot logs
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp logs -n 120 bot
+# Expected: Bot shows "online" status, no errors about parse_mode
 ```
 
 ### Common Issues

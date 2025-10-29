@@ -21,6 +21,9 @@ from aiogram.utils.markdown import hbold
 import httpx
 from pydantic import BaseModel
 
+# Initialize dispatcher
+dp = Dispatcher()
+
 # Use uvloop on non-Windows platforms for performance
 if os.name != "nt":
     with suppress(Exception):
