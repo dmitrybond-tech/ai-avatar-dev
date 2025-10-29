@@ -34,7 +34,22 @@ jobs:
 
     steps:
       - name: Checkout
-      - uses: actions/checkout@v4
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (web)
+        if: matrix.component == 'web'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.16.0
+          cache: npm
+          cache-dependency-path: apps/miniapp-web/package-lock.json
+
+      - name: Install and build (web)
+        if: matrix.component == 'web'
+        working-directory: apps/miniapp-web
+        run: |
+          npm ci
+          npm run build
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

@@ -1,5 +1,5 @@
 # --- Builder stage ---
-FROM node:20.16.0-alpine AS builder
+FROM node:20.16.0-alpine AS build
 
 WORKDIR /app
 
@@ -10,21 +10,21 @@ ARG VITE_DEFAULT_LANG
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_DEFAULT_LANG=${VITE_DEFAULT_LANG}
 
-COPY apps/miniapp-web/package.json apps/miniapp-web/package.json
-COPY apps/miniapp-web/package-lock.json apps/miniapp-web/package-lock.json 2>/dev/null || true
-COPY apps/miniapp-web/ .
+# Install dependencies using lockfile
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
-# Install deps and build
-RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi \
-    && npm run build
+# Copy the rest of the source and build
+COPY . .
+RUN npm run build
 
 # --- Runtime stage ---
 FROM nginx:1.27.2-alpine
 
 WORKDIR /usr/share/nginx/html
 
-COPY --from=builder /app/dist/ .
-COPY apps/miniapp-web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist/ .
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 
