@@ -1,3 +1,101 @@
+name: CI Images
+
+on:
+  push:
+    branches:
+      - main
+      - feature/miniapp-containers
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch: {}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_API: ghcr.io/dmitrybond-tech/ai-avatar-miniapp-api
+  IMAGE_WEB: ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web
+  IMAGE_BOT: ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            context: apps/miniapp-api
+            dockerfile: Dockerfile
+            image: ${IMAGE_API}
+          - name: web
+            context: apps/miniapp-web
+            dockerfile: Dockerfile
+            image: ${IMAGE_WEB}
+            build-args: |
+              VITE_API_BASE_URL=https://miniapp.dmitrybond.tech
+              VITE_DEFAULT_LANG=ru
+          - name: bot
+            context: apps/miniapp-bot
+            dockerfile: Dockerfile
+            image: ${IMAGE_BOT}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.IMAGE_API }}
+            ${{ env.IMAGE_WEB }}
+            ${{ env.IMAGE_BOT }}
+          tags: |
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,format=short,prefix=sha-
+            type=ref,event=tag
+          flavor: |
+            latest=false
+
+      - name: Select image for service
+        id: select
+        run: |
+          case "${{ matrix.name }}" in
+            api) echo "image=${IMAGE_API}" >> $GITHUB_OUTPUT ;;
+            web) echo "image=${IMAGE_WEB}" >> $GITHUB_OUTPUT ;;
+            bot) echo "image=${IMAGE_BOT}" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Build and push ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ steps.select.outputs.image }}:main
+            ${{ steps.select.outputs.image }}:${{ github.sha }}
+            ${{ steps.select.outputs.image }}:${{ github.ref_name }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ matrix.build-args }}
+
 name: Build and Push Images to GHCR
 
 on:

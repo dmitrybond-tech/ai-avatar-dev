@@ -409,7 +409,7 @@ curl http://localhost:8081/rules?lang=ru
 # Check bot logs
 docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
   --env-file infra/compose/.env.miniapp logs -f bot
-# Expected: Bot shows "online" status, no errors about parse_mode
+# Expected: Bot shows "online" status, no errors about parse_mode; webhook is deleted on start (polling)
 
 # Check web (if exposed)
 curl http://localhost:5175

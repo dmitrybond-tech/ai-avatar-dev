@@ -159,7 +159,6 @@ async def show_scene(cb: CallbackQuery | Message, scene_key: str) -> None:
 async def main() -> None:
     """Main function with webhook/polling mode support."""
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = Dispatcher()
     
     try:
         if BOT_MODE == "webhook":
