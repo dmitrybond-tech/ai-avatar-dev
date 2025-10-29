@@ -96,3 +96,24 @@ secrets/
 # Editors
 .vscode/
 .DS_Store
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Env
+.env
+.env.*
+*.secret
+secrets/
+*.key
+*.pem
+
+# Editors
+.vscode/
+.DS_Store
