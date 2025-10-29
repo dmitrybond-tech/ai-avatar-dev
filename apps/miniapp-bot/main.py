@@ -13,6 +13,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     WebAppInfo,
+    DefaultBotProperties,
 )
 from aiogram.utils.markdown import hbold
 
@@ -150,7 +151,7 @@ async def main() -> None:
         raise RuntimeError("TELEGRAM_TOKEN is not set")
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
-    bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     try:
         await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
     finally:
