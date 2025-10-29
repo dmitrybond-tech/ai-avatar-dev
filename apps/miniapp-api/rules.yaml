@@ -1,0 +1,61 @@
+version: 1
+languages: [ru, en]
+labels:
+  start:
+    ru: "Старт"
+    en: "Start"
+  back:
+    ru: "Назад"
+    en: "Back"
+  language:
+    ru: "Язык"
+    en: "Language"
+  book:
+    ru: "Записаться"
+    en: "Book a call"
+  about:
+    ru: "Обо мне"
+    en: "About"
+  services:
+    ru: "Услуги"
+    en: "Services"
+  cases:
+    ru: "Кейсы"
+    en: "Cases"
+intents:
+  - key: start
+    ru: ["старт", "начать"]
+    en: ["start", "hi", "hello"]
+  - key: book
+    ru: ["записаться", "созвон", "встреча"]
+    en: ["book", "call", "meeting"]
+  - key: about
+    ru: ["обо мне", "кто ты"]
+    en: ["about", "bio", "who are you"]
+  - key: services
+    ru: ["услуги", "что умеешь"]
+    en: ["services", "what you do"]
+  - key: cases
+    ru: ["кейсы", "проекты"]
+    en: ["cases", "projects"]
+scenes:
+  start:
+    text:
+      ru: "Привет! Я ассистент Дмитрия. Чем помочь?"
+      en: "Hi! I’m Dmitry’s assistant. How can I help?"
+    buttons: [book, about, services, cases]
+  about:
+    text:
+      ru: "8+ лет в облаках (Azure/AWS/GCP), SaaS/маркетплейсы, консалтинг."
+      en: "8+ years in cloud (Azure/AWS/GCP), SaaS/marketplaces, consulting."
+    buttons: [book, services, cases, start]
+  services:
+    text:
+      ru: "- Аудит и миграции\n- Модернизация\n- Безопасность\n- PM/Delivery"
+      en: "- Audits & migrations\n- Modernization\n- Security\n- PM/Delivery"
+    buttons: [book, cases, start]
+  cases:
+    text:
+      ru: "CloudBlue, Datacom, NCE, SSO, микросервисы, 5x9, и пр."
+      en: "CloudBlue, Datacom, NCE, SSO, microservices, 5x9, etc."
+    buttons: [book, services, start]

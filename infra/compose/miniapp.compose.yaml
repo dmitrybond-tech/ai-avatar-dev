@@ -1,29 +1,45 @@
+version: '3.9'
 services:
-  gateway:
-    build:
-      context: ../../apps/miniapp-gateway
-      dockerfile: Dockerfile
-    container_name: miniapp-gateway
-    env_file:
-      - .env.miniapp
+  api:
+    image: python:3.12-slim
+    working_dir: /app
+    command: bash -lc "pip install -r apps/miniapp-api/requirements.txt && uvicorn apps.miniapp_api.main:app --host 0.0.0.0 --port 8080"
+    volumes:
+      - ../../:/app:rw
+    environment:
+      - PORT=8080
+      - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
+      - CAL_HOST=${CAL_HOST:-cal.com}
+      - DEFAULT_LANG=${DEFAULT_LANG:-ru}
     ports:
-      - "${GATEWAY_PORT:-8080}:8080"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
+      - "8080:8080"
 
   bot:
-    build:
-      context: ../../apps/miniapp-bot
-      dockerfile: Dockerfile
-    container_name: miniapp-bot
-    env_file:
-      - .env.miniapp
+    image: python:3.12-slim
+    working_dir: /app
+    command: bash -lc "pip install -r apps/miniapp-bot/requirements.txt && python apps/miniapp-bot/main.py"
+    volumes:
+      - ../../:/app:rw
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - TELEGRAM_BOT_NAME=${TELEGRAM_BOT_NAME}
+      - API_BASE_URL=${API_BASE_URL:-http://api:8080}
+      - DEFAULT_LANG=${DEFAULT_LANG:-ru}
+      - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
+      - CAL_EVENT_INTRO=${CAL_EVENT_INTRO:-intro-30m}
+      - WEBAPP_URL=${WEBAPP_URL:-http://web:5173}
     depends_on:
-      gateway:
-        condition: service_healthy
-    restart: unless-stopped
+      - api
+
+  web:
+    image: node:20-alpine
+    working_dir: /app/apps/miniapp-web
+    command: sh -lc "npm ci && npm run build && npm run preview -- --port 5173 --host 0.0.0.0"
+    volumes:
+      - ../../:/app:rw
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080}
+      - VITE_DEFAULT_LANG=${VITE_DEFAULT_LANG:-ru}
+    ports:
+      - "5173:5173"
 
