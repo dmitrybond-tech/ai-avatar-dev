@@ -1,11 +1,9 @@
 version: '3.9'
 services:
   api:
-    image: python:3.12-slim
-    working_dir: /app
-    command: bash -lc "pip install -r apps/miniapp-api/requirements.txt && uvicorn apps.miniapp_api.main:app --host 0.0.0.0 --port 8080"
-    volumes:
-      - ../../:/app:rw
+    build:
+      context: ../../
+      dockerfile: apps/miniapp-api/Dockerfile
     environment:
       - PORT=8080
       - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
@@ -16,11 +14,9 @@ services:
       - "8080:8080"
 
   bot:
-    image: python:3.12-slim
-    working_dir: /app
-    command: bash -lc "pip install -r apps/miniapp-bot/requirements.txt && python apps/miniapp-bot/main.py"
-    volumes:
-      - ../../:/app:rw
+    build:
+      context: ../../
+      dockerfile: apps/miniapp-bot/Dockerfile
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - TELEGRAM_BOT_NAME=${TELEGRAM_BOT_NAME}
@@ -34,15 +30,13 @@ services:
     restart: unless-stopped
 
   web:
-    image: node:20-alpine
-    working_dir: /app/apps/miniapp-web
-    command: sh -lc "npm ci && npm run build && npm run preview -- --port 5173 --host 0.0.0.0"
-    volumes:
-      - ../../:/app:rw
-    environment:
-      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080}
-      - VITE_DEFAULT_LANG=${VITE_DEFAULT_LANG:-ru}
+    build:
+      context: ../../apps/miniapp-web
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080}
+        - VITE_DEFAULT_LANG=${VITE_DEFAULT_LANG:-ru}
     restart: unless-stopped
     ports:
-      - "5173:5173"
+      - "5173:80"
 

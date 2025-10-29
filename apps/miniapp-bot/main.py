@@ -13,8 +13,8 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     WebAppInfo,
-    DefaultBotProperties,
 )
+from aiogram.client.default import DefaultBotProperties
 from aiogram.utils.markdown import hbold
 
 import httpx
@@ -30,7 +30,9 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
 DEFAULT_LANG = os.getenv("DEFAULT_LANG", "ru")
 CAL_USERNAME = os.getenv("CAL_USERNAME", "dmitrybond")
 CAL_EVENT_INTRO = os.getenv("CAL_EVENT_INTRO", "intro-30m")
-BOT_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN is not set")
 BOT_NAME = os.getenv("TELEGRAM_BOT_NAME", "miniapp_bot")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "http://127.0.0.1:5173")  # optional for local dev
 
@@ -147,8 +149,6 @@ async def show_scene(cb: CallbackQuery | Message, scene_key: str) -> None:
 
 
 async def main() -> None:
-    if not BOT_TOKEN:
-        raise RuntimeError("TELEGRAM_TOKEN is not set")
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
