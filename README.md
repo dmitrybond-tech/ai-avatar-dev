@@ -378,13 +378,8 @@ cp env.miniapp.example .env.miniapp
 
 ```bash
 # Build images and start all services
-docker compose -f miniapp.compose.yaml up -d --build
-
-# Or using the helper script
-# Windows PowerShell:
-../../scripts/miniapp-up.ps1
-# Linux/Mac:
-../../scripts/miniapp-up.sh
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp up -d --build
 ```
 
 3. **Verify Services**
@@ -399,7 +394,7 @@ curl http://localhost:8080/rules?lang=ru
 # Expected: JSON with labels and scenes
 
 # Check bot logs
-docker compose -f miniapp.compose.yaml logs -f bot
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml logs -f bot
 # Expected: Bot shows "online" status, no errors about parse_mode
 
 # Check web (if exposed)
@@ -413,54 +408,20 @@ On production, Caddy proxies `miniapp.dmitrybond.tech` to:
 - API: `127.0.0.1:8081` (internal port)
 - Web: `127.0.0.1:5175` (internal port)
 
-**Using Pre-built Images (miniapp.stack.yml):**
+**Build & Run:**
 
 ```bash
-cd infra/compose
-
-# Copy and configure environment
-cp env.miniapp.example .env.miniapp
-# Edit .env.miniapp with production values:
-# - TELEGRAM_TOKEN (from @BotFather)
-# - WEBAPP_URL=https://miniapp.dmitrybond.tech/miniapp/
-# - VITE_API_BASE_URL=https://miniapp.dmitrybond.tech
-
-# Start services using pre-built images
-docker compose -f miniapp.stack.yml up -d
-
-# Check logs
-docker compose -f miniapp.stack.yml logs -f bot
-```
-
-**Using Build from Source (miniapp.compose.yaml):**
-
-```bash
-cd infra/compose
-
-# Build and start
-docker compose -f miniapp.compose.yaml up -d --build
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp up -d --build
 ```
 
 ### Smoke Tests
 
-After deployment, verify all components:
-
 ```bash
-# 1. API Health Check
-curl https://miniapp.dmitrybond.tech/healthz
-# Expected: {"status":"ok"}
-
-# 2. Rules Endpoint
-curl https://miniapp.dmitrybond.tech/rules?lang=ru
-# Expected: JSON response with labels and scenes
-
-# 3. Web App
-curl -I https://miniapp.dmitrybond.tech/miniapp/
-# Expected: HTTP 200, assets served by Nginx
-
-# 4. Bot Status
-docker compose -f miniapp.stack.yml logs bot | grep -i "online\|started\|error"
-# Expected: Bot is online, no TypeError about parse_mode
+curl -sI --http2 https://miniapp.dmitrybond.tech/miniapp/ | egrep -i '^(HTTP/|content-type|cache-control)'
+curl -s  --http2 https://miniapp.dmitrybond.tech/healthz && echo
+curl -s  --http2 'https://miniapp.dmitrybond.tech/rules?lang=ru' | head
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml logs -n 120 bot
 ```
 
 ### Common Issues
@@ -475,13 +436,13 @@ docker compose -f miniapp.stack.yml logs bot | grep -i "online\|started\|error"
 
 - ✅ **Fixed**: Added early validation in `main.py`
 - Check `.env.miniapp` file exists and contains `TELEGRAM_TOKEN=your_token_here`
-- Ensure `.env.miniapp` is loaded: `docker compose -f miniapp.stack.yml --env-file .env.miniapp up -d`
+- Ensure `.env.miniapp` is loaded: `docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml --env-file infra/compose/.env.miniapp up -d`
 
 **Runtime pip/npm installs in logs**
 
 - ✅ **Fixed**: Removed runtime installs from `miniapp.compose.yaml`
 - All dependencies are installed at Docker build-time via Dockerfiles
-- Rebuild images: `docker compose -f miniapp.compose.yaml build --no-cache`
+- Rebuild images: `docker compose -f infra/compose/miniapp.compose.yaml build --no-cache`
 
 **Web app shows 404 or assets not loading**
 
