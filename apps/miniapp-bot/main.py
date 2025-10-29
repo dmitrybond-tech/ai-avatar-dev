@@ -3,16 +3,17 @@ import logging
 import os
 from contextlib import suppress
 
-from aiogram import Bot, Dispatcher, Router, F
+from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
-from aiogram.filters import Command
-from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message,
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     WebAppInfo,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
 )
 from aiogram.client.default import DefaultBotProperties
 from aiogram.utils.markdown import hbold
@@ -39,7 +40,8 @@ WEBAPP_URL = os.getenv("WEBAPP_URL", "http://127.0.0.1:5173")  # optional for lo
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("miniapp-bot")
 
-router = Router()
+# Bot mode: polling (default) or webhook
+BOT_MODE = os.getenv("BOT_MODE", "polling")
 
 
 class SessionState(BaseModel):
@@ -90,26 +92,29 @@ def make_keyboard(labels: dict, scene_buttons: list[str], lang: str) -> InlineKe
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-@router.message(Command("healthz"))
+@dp.message(Command("healthz"))
 async def cmd_healthz(message: Message) -> None:
     await message.answer("ok")
 
 
-@router.message(Command("start"))
+@dp.message(CommandStart())
 async def cmd_start(message: Message) -> None:
+    """Handle /start command with WebApp button."""
     user_id = message.from_user.id if message.from_user else 0
-    session = get_session(user_id)
-    rules = await fetch_rules(session.lang)
-    labels = rules.get("labels", {})
-    scenes = rules.get("scenes", {})
-    current = session.scene
-    scene = scenes.get(current, scenes.get("start", {}))
-    text = scene.get("text", "")
-    kb = make_keyboard(labels, scene.get("buttons", []), session.lang)
-    await message.answer(text, reply_markup=kb)
+    logger.info(f"User {user_id} started the bot")
+    
+    # Create WebApp button
+    web_app = WebAppInfo(url=f"{WEBAPP_URL}/miniapp/")
+    button = KeyboardButton(text="Open Mini App", web_app=web_app)
+    keyboard = ReplyKeyboardMarkup(keyboard=[[button]], resize_keyboard=True)
+    
+    await message.answer(
+        "Привет! Открывай мини-апп 👇",
+        reply_markup=keyboard
+    )
 
 
-@router.callback_query(F.data.startswith("lang:"))
+@dp.callback_query(F.data.startswith("lang:"))
 async def on_lang_toggle(cb: CallbackQuery) -> None:
     user_id = cb.from_user.id if cb.from_user else 0
     session = get_session(user_id)
@@ -118,7 +123,7 @@ async def on_lang_toggle(cb: CallbackQuery) -> None:
     await show_scene(cb, session.scene)
 
 
-@router.callback_query(F.data.startswith("nav:"))
+@dp.callback_query(F.data.startswith("nav:"))
 async def on_nav(cb: CallbackQuery) -> None:
     user_id = cb.from_user.id if cb.from_user else 0
     session = get_session(user_id)
@@ -149,11 +154,37 @@ async def show_scene(cb: CallbackQuery | Message, scene_key: str) -> None:
 
 
 async def main() -> None:
-    dp = Dispatcher(storage=MemoryStorage())
-    dp.include_router(router)
+    """Main function with webhook/polling mode support."""
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    dp = Dispatcher()
+    
     try:
-        await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
+        if BOT_MODE == "webhook":
+            # Webhook mode (optional, behind env flag)
+            webhook_url = os.getenv("WEBHOOK_URL")
+            if not webhook_url:
+                raise RuntimeError("WEBHOOK_URL must be set when BOT_MODE=webhook")
+            
+            # Set webhook
+            await bot.set_webhook(webhook_url)
+            logger.info(f"BOT: webhook set to {webhook_url}")
+            
+            # Start webhook server (this would need additional setup)
+            # For now, we'll default to polling
+            logger.warning("Webhook mode not fully implemented, falling back to polling")
+            BOT_MODE = "polling"
+        
+        if BOT_MODE == "polling":
+            # Ensure webhook is not set (ignore errors)
+            try:
+                await bot.delete_webhook(drop_pending_updates=False)
+            except Exception as e:
+                logger.warning(f"Failed to delete webhook (this is ok): {e}")
+            
+            logger.info("BOT: polling started")
+            # Start polling with only the updates we actually use
+            await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+            
     finally:
         await bot.session.close()
 

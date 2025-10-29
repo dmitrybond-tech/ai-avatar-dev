@@ -142,16 +142,53 @@ docker compose -f infra/compose/miniapp.compose.yaml up -d
 - Timeouts/retries for API calls in bot via `httpx`
 
 ## Troubleshooting
+
+### Reset Webhook
+If the bot is not responding to `/start` commands, the webhook might be set. Reset it:
+
+```bash
+export TG_TOKEN=your_bot_token_here  # not in repo
+curl -s "https://api.telegram.org/bot$TG_TOKEN/getWebhookInfo"
+curl -s "https://api.telegram.org/bot$TG_TOKEN/deleteWebhook?drop_pending_updates=false"
+```
+
+### Runbook
+Deploy with Docker Compose:
+
+```bash
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp up -d --build
+```
+
+### Smoke Test
+Test all endpoints:
+
+```bash
+# API health
+curl -f http://127.0.0.1:8081/healthz
+
+# API rules
+curl -f "http://127.0.0.1:8081/rules?lang=ru"
+
+# Web app (should show fallback outside Telegram)
+curl -f http://127.0.0.1:5175/
+```
+
+### Common Issues
 - Telegram WebApp requires public HTTPS; for local dev use tunnels (e.g., Cloudflare Tunnel/Ngrok) and set `WEBAPP_URL`
-- If Vite dev doesn’t open externally, use tunnels or run `vite preview` in Compose
-- CORS: API allows `*` for local dev only
+- If Vite dev doesn't open externally, use tunnels or run `vite preview` in Compose
+- CORS: API allows specific domains only (production + localhost)
 - Windows: ensure Python 3.12 and Node.js 20+
+- Bot not responding: check webhook status and reset if needed
 
 ## Acceptance Test (Manual)
 1. Start API, then Bot, then Web locally
 2. In Telegram chat:
-   - `/start` shows buttons and language toggle
-   - Tap WebApp button → opens Mini App UI
+   - `/start` shows "Привет! Открывай мини-апп 👇" with "Open Mini App" WebApp button
+   - Tap WebApp button → opens Mini App UI with proper Telegram context
    - Tap "Book a call" → opens `https://cal.com/<CAL_USERNAME>/<CAL_EVENT_INTRO>`
    - Navigate About/Services/Cases → texts from YAML
    - `/healthz` replies `ok`; API `/healthz` returns `{status:"ok"}`
+3. Outside Telegram (browser):
+   - Open `https://miniapp.dmitrybond.tech/miniapp/` → shows "Open in Telegram" fallback
+   - Click "Open in Telegram" → redirects to bot
