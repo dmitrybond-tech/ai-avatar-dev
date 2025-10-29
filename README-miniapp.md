@@ -1,3 +1,53 @@
+MiniApp (Telegram WebApp + Bot + API)
+
+Components:
+- apps/miniapp-api: FastAPI serving rules and Cal links
+- apps/miniapp-bot: aiogram v3 deterministic bot using rules
+- apps/miniapp-web: Vite+React+TS static WebApp UI
+
+Local development (PowerShell):
+- API: `pwsh ./dev.ps1 api`
+- Bot: `pwsh ./dev.ps1 bot`
+- Web: `pwsh ./dev.ps1 web`
+
+Environment examples:
+- API: `apps/miniapp-api/env.example`
+- Bot: `apps/miniapp-bot/env.example`
+- Web: `apps/miniapp-web/env.example`
+- Compose: `infra/compose/env.miniapp.example`
+
+CI:
+- `.github/workflows/miniapp-ci.yml` validates API rules, compiles bot, builds web
+ - `.github/workflows/miniapp-build.yml` builds and pushes GHCR images on pushes to `main` and tags `v*`
+
+Container images (GHCR):
+- `ghcr.io/dmitrybond-tech/ai-avatar-miniapp-api` — tags: `main`, `sha-<short>`, and `latest` on `v*`
+- `ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot` — tags: `main`, `sha-<short>`, and `latest` on `v*`
+- `ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web` — tags: `main`, `sha-<short>`, and `latest` on `v*`
+
+Deploy (VPS, docker compose):
+1) DNS (Cloudflare): create A record `miniapp` -> <VPS IP> (DNS-only initially)
+2) On VPS (production stack using GHCR images):
+```
+cd /srv/ai-avatar/infra/compose
+cp env.miniapp.example .env.miniapp
+docker compose -f miniapp.stack.yml --env-file .env.miniapp pull
+docker compose -f miniapp.stack.yml --env-file .env.miniapp up -d
+```
+3) Caddy: add snippet from `infra/compose/CADDY_SNIPPETS.md` to `/etc/caddy/Caddyfile`, then:
+```
+sudo caddy fmt --overwrite /etc/caddy/Caddyfile
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+4) BotFather:
+- `/setdomain` -> `miniapp.dmitrybond.tech`
+- Menu Button -> Configure Web App -> `https://miniapp.dmitrybond.tech/`
+
+Notes:
+- WebApp calls API via the same domain (`VITE_API_BASE_URL`), CORS is open for dev
+- Deterministic flows only, no RASA/LLM calls
+ - Caddy proxies `miniapp.dmitrybond.tech` → `localhost:5173` (web) and `localhost:8080` (api)
 # Telegram Mini App — Rule-Based Personal Assistant (RU/EN)
 
 This mini app is a deterministic, rule-based assistant that:

@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  api:
+    image: ghcr.io/dmitrybond-tech/ai-avatar-miniapp-api:${MINIAPP_TAG:-main}
+    restart: unless-stopped
+    environment:
+      - PORT=8080
+      - DEFAULT_LANG=${DEFAULT_LANG:-ru}
+      - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
+      - CAL_HOST=${CAL_HOST:-cal.com}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  bot:
+    image: ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot:${MINIAPP_TAG:-main}
+    restart: unless-stopped
+    env_file:
+      - .env.miniapp
+    depends_on:
+      - api
+
+  web:
+    image: ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web:${MINIAPP_TAG:-main}
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+

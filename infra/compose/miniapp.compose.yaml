@@ -11,6 +11,7 @@ services:
       - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
       - CAL_HOST=${CAL_HOST:-cal.com}
       - DEFAULT_LANG=${DEFAULT_LANG:-ru}
+    restart: unless-stopped
     ports:
       - "8080:8080"
 
@@ -30,6 +31,7 @@ services:
       - WEBAPP_URL=${WEBAPP_URL:-http://web:5173}
     depends_on:
       - api
+    restart: unless-stopped
 
   web:
     image: node:20-alpine
@@ -40,6 +42,7 @@ services:
     environment:
       - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080}
       - VITE_DEFAULT_LANG=${VITE_DEFAULT_LANG:-ru}
+    restart: unless-stopped
     ports:
       - "5173:5173"
 
