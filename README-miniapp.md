@@ -192,3 +192,5 @@ curl -f http://127.0.0.1:5175/
 3. Outside Telegram (browser):
    - Open `https://miniapp.dmitrybond.tech/miniapp/` → shows "Open in Telegram" fallback
    - Click "Open in Telegram" → redirects to bot
+
+CI: ping to trigger build-and-push-miniapp workflow.
