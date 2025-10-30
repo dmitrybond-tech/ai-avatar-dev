@@ -8,6 +8,7 @@ from app.core.settings import settings
 from app.core.logging import setup_logging, get_logger
 from app.db.connection import init_db, close_db
 from app.adapters.web import health, chat, chat_ws, voice, telegram, chat_stub
+from app.adapters.web import client_log
 
 setup_logging()
 logger = get_logger(__name__)
@@ -64,6 +65,7 @@ app.include_router(chat_ws.router, tags=["chat"])
 app.include_router(voice.router, tags=["voice"])
 app.include_router(telegram.router, tags=["telegram"])
 app.include_router(chat_stub.router, tags=["chat-stub"])
+app.include_router(client_log.router, tags=["client-log"])
 
 
 if __name__ == "__main__":

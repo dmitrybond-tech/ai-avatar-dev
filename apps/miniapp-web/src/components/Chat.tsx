@@ -35,7 +35,7 @@ export function ChatBox() {
         ))}
       </div>
       <div className="flex gap-2">
-        <input className="flex-1 border border-gray-300 rounded px-3 h-10" value={text} onChange={(e)=>setText(e.target.value)} placeholder="Type a message" />
+        <input className="flex-1 border border-gray-300 rounded px-3 h-10" value={text} onChange={(e)=>setText(e.target.value)} onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); send(); } }} placeholder="Type a message" />
         <button className="h-10 px-4 rounded bg-black text-white" onClick={send} disabled={sending}>Send</button>
       </div>
     </div>
