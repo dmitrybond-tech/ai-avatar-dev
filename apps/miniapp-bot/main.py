@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 from contextlib import suppress
+from datetime import datetime, timezone
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
@@ -279,34 +280,82 @@ async def on_any_message(message: Message, bot: Bot) -> None:
     _awaiting_brief.discard(user_id)
 
     username = message.from_user.username if message.from_user else ""
+    full_name = (message.from_user.full_name if message.from_user else "").strip()
+    language_code = (message.from_user.language_code if message.from_user else None) or "—"
+    # Telegram provides message.date in UTC; normalize and format ISO8601 with Z
+    try:
+        msg_dt = message.date
+        if msg_dt.tzinfo is None:
+            msg_dt = msg_dt.replace(tzinfo=timezone.utc)
+        sent_at_utc = msg_dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    except Exception:
+        sent_at_utc = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
     caption = (message.caption or message.text or "") if message else ""
 
     file_id: str | None = None
     file_name: str | None = None
     file_size: int | None = None
     file_url: str | None = None
+    file_unique_id: str | None = None
+    mime_type: str | None = None
+    photo_width: int | None = None
+    photo_height: int | None = None
 
     # Extract file info
     try:
         if message.document:
             file_id = message.document.file_id
+            file_unique_id = message.document.file_unique_id
             file_name = message.document.file_name
             file_size = message.document.file_size
+            mime_type = message.document.mime_type
         elif message.photo:
             # largest photo
             ph = message.photo[-1]
             file_id = ph.file_id
-            file_size = ph.file_size
+            file_unique_id = ph.file_unique_id
+            file_size = getattr(ph, "file_size", None)
+            photo_width = getattr(ph, "width", None)
+            photo_height = getattr(ph, "height", None)
     except Exception:
         pass
 
-    # Forward/copy to admin
+    # Forward/copy to admin and send metadata
     try:
         admin_id = await resolve_admin_chat_id(bot)
-        if file_id:
-            await forward_brief_to_admin(message, admin_id, bot)
-        else:
-            await bot.send_message(chat_id=admin_id, text=f"Brief text from @{username} ({user_id}):\n{caption}")
+        # Always copy the original message to preserve content/caption
+        await forward_brief_to_admin(message, admin_id, bot)
+
+        # Build metadata HTML
+        username_disp = f"@{username}" if username else "—"
+        name_disp = full_name or "—"
+        file_block_lines: list[str] = []
+        if message.document:
+            file_block_lines.append(f"• <b>File:</b> name={file_name or '—'} mime={mime_type or '—'} size={file_size or '—'}")
+            if file_id:
+                file_block_lines.append(f"• <b>file_id:</b> {file_id}")
+            if file_unique_id:
+                file_block_lines.append(f"• <b>file_unique_id:</b> {file_unique_id}")
+        elif message.photo:
+            size_part = f" size={file_size}" if file_size is not None else ""
+            dims_part = f" {photo_width or '—'}x{photo_height or '—'}" if (photo_width or photo_height) else ""
+            file_block_lines.append(f"• <b>Photo:</b>{dims_part}{size_part}")
+            if file_id:
+                file_block_lines.append(f"• <b>file_id:</b> {file_id}")
+            if file_unique_id:
+                file_block_lines.append(f"• <b>file_unique_id:</b> {file_unique_id}")
+        file_block = ("\n" + "\n".join(file_block_lines)) if file_block_lines else ""
+
+        meta = (
+            "<b>Brief metadata</b>\n"
+            f"• <b>User ID:</b> {user_id}\n"
+            f"• <b>Username:</b> {username_disp}\n"
+            f"• <b>Name:</b> {name_disp}\n"
+            f"• <b>Lang:</b> {language_code}\n"
+            f"• <b>Sent at (UTC):</b> {sent_at_utc}"
+            f"{file_block}"
+        )
+        await bot.send_message(admin_id, meta, parse_mode='HTML', disable_web_page_preview=True)
     except Exception as e:
         logger.error(f"Failed to forward brief to admin: {e}")
         await message.answer(i18n.t(session.lang, "errors.try_again"))
@@ -325,10 +374,11 @@ async def on_any_message(message: Message, bot: Bot) -> None:
 
     # Create Notion page (best-effort)
     try:
-        iso_ts = __import__("datetime").datetime.utcnow().isoformat()
-        title = f"Brief from @{username} ({user_id})" if username else f"Brief from {user_id}"
+        iso_ts = sent_at_utc
+        title = f"Brief: {username or str(user_id)} {iso_ts[:10]}"
         payload = {
             "title": title,
+            # legacy fields retained
             "language": session.lang,
             "timestamp": iso_ts,
             "caption": caption,
@@ -338,9 +388,32 @@ async def on_any_message(message: Message, bot: Bot) -> None:
             "tg_username": username or "",
             "tg_user_id": user_id,
             "file_url": file_url or "",
+            # extended metadata
+            "sender_id": user_id,
+            "username": username or "",
+            "full_name": full_name or "",
+            "language_code": language_code or "",
+            "sent_at": iso_ts,
+            "source_chat_id": message.chat.id if getattr(message, "chat", None) else None,
+            "source_message_id": message.message_id,
+            "mime_type": mime_type or "",
+            "file_unique_id": file_unique_id or "",
+            "photo_width": photo_width,
+            "photo_height": photo_height,
         }
+        notion_page_id: str | None = None
         if notion_client.configured():
-            await notion_client.create_brief_page(payload)
+            notion_page_id = await notion_client.create_brief_page(payload)
+        logger.info(
+            "brief.handle.success",
+            extra={
+                "sender_id": user_id,
+                "username": username or "",
+                "sent_at": iso_ts,
+                "has_file": bool(file_id),
+                "notion_page_id": notion_page_id,
+            },
+        )
     except Exception as e:
         logger.error(f"Failed to create Notion page for brief: {e}")
 
