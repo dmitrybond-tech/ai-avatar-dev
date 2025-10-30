@@ -1,7 +1,13 @@
 services:
   api:
     ports:
-      - "127.0.0.1:8081:8080"
+      - "127.0.0.1:18080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
   web:
     ports:
-      - "127.0.0.1:5175:80"
+      - "127.0.0.1:15173:80"

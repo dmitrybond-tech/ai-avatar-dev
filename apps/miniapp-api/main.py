@@ -1,7 +1,7 @@
 import os
 from typing import Any, Dict, List, Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -65,6 +65,11 @@ async def healthz() -> Dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/health")
+def health() -> Dict[str, str]:
+    return {"status": "ok"}
+
+
 @app.get("/rules", response_model=RulesResponse)
 async def get_rules() -> RulesResponse:
     return RulesResponse(items=[
@@ -122,4 +127,4 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(os.getenv("PORT", "8080"))
-    uvicorn.run("apps.miniapp_api.main:app", host="127.0.0.1", port=port, reload=True)
+    uvicorn.run("apps.miniapp_api.main:app", host="0.0.0.0", port=port, reload=True)
