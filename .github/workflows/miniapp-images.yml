@@ -1,4 +1,4 @@
-name: build-and-push-miniapp
+name: MiniApp Images — Build & Push (GHCR)
 
 on:
   push:
