@@ -1,6 +1,7 @@
 import os
 import logging
 from aiogram import Bot
+from aiogram.types import Message
 
 
 logger = logging.getLogger("miniapp-bot")
@@ -33,4 +34,12 @@ async def resolve_admin_chat_id(bot: Bot) -> int:
 
     raise RuntimeError("Cannot resolve admin chat id: set ADMIN_CHAT_ID or ensure @d1mab0nd is resolvable")
 
+
+async def forward_brief_to_admin(message: Message, admin_chat_id: int, bot: Bot) -> None:
+    """Forward or copy the user's brief message to admin preserving caption/content."""
+    await bot.copy_message(
+        chat_id=admin_chat_id,
+        from_chat_id=message.chat.id,
+        message_id=message.message_id,
+    )
 

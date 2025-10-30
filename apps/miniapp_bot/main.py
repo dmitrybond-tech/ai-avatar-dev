@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from .i18n import I18N
 from .state import UserStateStore
-from .admin import resolve_admin_chat_id
+from .admin import resolve_admin_chat_id, forward_brief_to_admin
 from .notion import NotionClient
 
 # Initialize dispatcher
@@ -271,7 +271,7 @@ async def on_brief_button(message: Message) -> None:
 
 
 @dp.message(F.document | F.photo | F.text)
-async def on_any_message(message: Message) -> None:
+async def on_any_message(message: Message, bot: Bot) -> None:
     user_id = message.from_user.id if message.from_user else 0
     if user_id not in _awaiting_brief:
         return
@@ -302,11 +302,11 @@ async def on_any_message(message: Message) -> None:
 
     # Forward/copy to admin
     try:
-        admin_id = await resolve_admin_chat_id(dp.bot)
+        admin_id = await resolve_admin_chat_id(bot)
         if file_id:
-            await dp.bot.copy_message(chat_id=admin_id, from_chat_id=message.chat.id, message_id=message.message_id)
+            await forward_brief_to_admin(message, admin_id, bot)
         else:
-            await dp.bot.send_message(chat_id=admin_id, text=f"Brief text from @{username} ({user_id}):\n{caption}")
+            await bot.send_message(chat_id=admin_id, text=f"Brief text from @{username} ({user_id}):\n{caption}")
     except Exception as e:
         logger.error(f"Failed to forward brief to admin: {e}")
         await message.answer(i18n.t(session.lang, "errors.try_again"))
@@ -315,7 +315,7 @@ async def on_any_message(message: Message) -> None:
     # Build Bot API file URL if possible
     try:
         if file_id:
-            file = await dp.bot.get_file(file_id)
+            file = await bot.get_file(file_id)
             if getattr(file, "file_path", None):
                 token = os.getenv("TELEGRAM_TOKEN", "")
                 if token:
