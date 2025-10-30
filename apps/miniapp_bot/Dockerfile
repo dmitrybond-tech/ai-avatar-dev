@@ -15,3 +15,4 @@ COPY . .
 # Do not bake secrets. Read TELEGRAM_TOKEN and others at runtime.
 CMD ["python", "-m", "apps.miniapp_bot.main"]
 
+

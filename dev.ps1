@@ -9,7 +9,7 @@ switch ($task) {
     }
     'bot' {
         Write-Host "Starting Telegram bot (aiogram)" -ForegroundColor Green
-        python .\apps\miniapp-bot\main.py
+        python -m apps.miniapp_bot.main
     }
     'web' {
         Write-Host "Starting Web (Vite dev server) on http://127.0.0.1:5173" -ForegroundColor Green
@@ -32,7 +32,7 @@ $ErrorActionPreference = 'Stop'
 
 function Start-Bot {
     $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-    $botDir = Join-Path $projectRoot 'apps\miniapp-bot'
+    $botDir = Join-Path $projectRoot 'apps\miniapp_bot'
     $venvDir = Join-Path $botDir '.venv'
 
     if (-not (Test-Path $venvDir)) {
@@ -46,7 +46,7 @@ function Start-Bot {
     Push-Location $botDir
     try {
         & $pip install --disable-pip-version-check -r requirements.txt
-        & $python .\main.py
+        & $python -m apps.miniapp_bot.main
     } finally {
         Pop-Location
     }

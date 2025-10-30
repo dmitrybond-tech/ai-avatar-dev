@@ -17,7 +17,7 @@ services:
   bot:
     image: null
     build:
-      context: ../../apps/miniapp-bot
+      context: ../../apps/miniapp_bot
       dockerfile: Dockerfile
 
 # --- MiniApp Local Build Override ---
