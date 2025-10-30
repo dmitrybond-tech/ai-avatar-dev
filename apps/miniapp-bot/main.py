@@ -174,12 +174,11 @@ async def main() -> None:
             # Start webhook server (this would need additional setup)
             # For now, we'll default to polling
             logger.warning("Webhook mode not fully implemented, falling back to polling")
-            BOT_MODE = "polling"
         
         if BOT_MODE == "polling":
             # Ensure webhook is not set (ignore errors)
             try:
-                await bot.delete_webhook(drop_pending_updates=False)
+                await bot.delete_webhook(drop_pending_updates=True)
             except Exception as e:
                 logger.warning(f"Failed to delete webhook (this is ok): {e}")
             
