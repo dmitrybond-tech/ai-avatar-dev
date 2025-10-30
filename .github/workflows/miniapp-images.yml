@@ -1,0 +1,85 @@
+name: build-and-push-miniapp
+
+on:
+  push:
+    branches: [ main, feature/** ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_OWNER: dmitrybond-tech
+  DEFAULT_TAG: ${{ github.ref == 'refs/heads/main' && 'main' || format('sha-{0}', github.sha[0:7]) }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            image: ai-avatar-miniapp-api
+            context: .
+            file: apps/miniapp-api/Dockerfile
+            build-args: ""
+          - name: web
+            image: ai-avatar-miniapp-web
+            context: apps/miniapp-web
+            file: apps/miniapp-web/Dockerfile
+            build-args: |
+              VITE_API_BASE_URL=https://miniapp.dmitrybond.tech
+              VITE_DEFAULT_LANG=ru
+          - name: bot
+            image: ai-avatar-miniapp-bot
+            context: .
+            file: apps/miniapp-bot/Dockerfile
+            build-args: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=${{ env.DEFAULT_TAG }}
+            type=raw,value=sha-${{ github.sha[0:7] }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          platforms: linux/amd64
+          build-args: ${{ matrix.build-args }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+
