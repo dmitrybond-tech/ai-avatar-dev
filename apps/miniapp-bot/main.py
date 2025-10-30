@@ -30,7 +30,7 @@ if os.name != "nt":
         import uvloop  # type: ignore
         uvloop.install()
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://miniapp.dmitrybond.tech")
 DEFAULT_LANG = os.getenv("DEFAULT_LANG", "ru")
 CAL_USERNAME = os.getenv("CAL_USERNAME", "dmitrybond")
 CAL_EVENT_INTRO = os.getenv("CAL_EVENT_INTRO", "intro-30m")
@@ -38,7 +38,7 @@ BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN is not set")
 BOT_NAME = os.getenv("TELEGRAM_BOT_NAME", "miniapp_bot")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "http://127.0.0.1:5173")  # optional for local dev
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://miniapp.dmitrybond.tech")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("miniapp-bot")
@@ -64,12 +64,20 @@ def get_session(user_id: int) -> SessionState:
     return state
 
 
-async def fetch_rules(lang: str | None = None) -> dict:
+async def fetch_rules() -> dict:
     url = f"{API_BASE_URL}/rules"
-    params = {"lang": lang} if lang else None
+    params = None
     timeout = httpx.Timeout(5.0, connect=3.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.get(url, params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+async def fetch_tasks() -> dict:
+    url = f"{API_BASE_URL}/tasks/status"
+    timeout = httpx.Timeout(5.0, connect=3.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(url)
         resp.raise_for_status()
         return resp.json()
 
@@ -102,19 +110,55 @@ async def cmd_healthz(message: Message) -> None:
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message) -> None:
-    """Handle /start command with WebApp button."""
+    """Handle /start command with WebApp and fallback buttons."""
     user_id = message.from_user.id if message.from_user else 0
     logger.info(f"User {user_id} started the bot")
-    
-    # Create WebApp button
-    web_app = WebAppInfo(url=f"{WEBAPP_URL}/miniapp/")
-    button = KeyboardButton(text="Open Mini App", web_app=web_app)
-    keyboard = ReplyKeyboardMarkup(keyboard=[[button]], resize_keyboard=True)
-    
-    await message.answer(
-        "Привет! Открывай мини-апп 👇",
-        reply_markup=keyboard
+
+    web_app = WebAppInfo(url=f"{WEBAPP_URL}/")
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Open MiniApp", web_app=web_app)],
+            [KeyboardButton(text="Записаться"), KeyboardButton(text="Навыки"), KeyboardButton(text="Статусы")],
+        ],
+        resize_keyboard=True,
     )
+    await message.answer("Привет! Открывай миниапп или используй кнопки ниже:", reply_markup=kb)
+
+
+@dp.message(F.text == "Записаться")
+async def on_book(message: Message) -> None:
+    url = f"https://cal.com/{CAL_USERNAME}/{CAL_EVENT_INTRO}"
+    await message.answer(f"Ссылка для записи: {url}")
+
+
+@dp.message(F.text == "Навыки")
+async def on_skills(message: Message) -> None:
+    data = await fetch_rules()
+    items = data.get("items", [])
+    if not items:
+        await message.answer("Пока нет данных.")
+        return
+    lines = ["Мои навыки:"]
+    for it in items:
+        title = it.get("title")
+        desc = it.get("desc")
+        tags = it.get("tags") or []
+        tag_str = f" ({', '.join(tags)})" if tags else ""
+        lines.append(f"• {title}{tag_str}" + (f" — {desc}" if desc else ""))
+    await message.answer("\n".join(lines))
+
+
+@dp.message(F.text == "Статусы")
+async def on_statuses(message: Message) -> None:
+    data = await fetch_tasks()
+    items = data.get("items", [])
+    if not items:
+        await message.answer("Пока нет задач.")
+        return
+    lines = ["Статусы задач:"]
+    for it in items:
+        lines.append(f"• {it.get('title')} — {it.get('status')}")
+    await message.answer("\n".join(lines))
 
 
 @dp.callback_query(F.data.startswith("lang:"))
@@ -144,16 +188,9 @@ async def on_nav(cb: CallbackQuery) -> None:
 async def show_scene(cb: CallbackQuery | Message, scene_key: str) -> None:
     user_id = cb.from_user.id if getattr(cb, "from_user", None) else 0
     session = get_session(user_id)
-    rules = await fetch_rules(session.lang)
-    labels = rules.get("labels", {})
-    scenes = rules.get("scenes", {})
-    scene = scenes.get(scene_key, scenes.get("start", {}))
-    text = scene.get("text", "")
-    kb = make_keyboard(labels, scene.get("buttons", []), session.lang)
+    # Minimal no-op to retain handler; new flows use fallback buttons
     if isinstance(cb, CallbackQuery):
-        await cb.message.edit_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
-    else:
-        await cb.answer(text, reply_markup=kb)
+        await cb.answer()
 
 
 async def main() -> None:
