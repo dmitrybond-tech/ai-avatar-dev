@@ -14,7 +14,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_OWNER: dmitrybond-tech
-  DEFAULT_TAG: ${{ github.ref == 'refs/heads/main' && 'main' || format('sha-{0}', github.sha[0:7]) }}
+  DEFAULT_TAG: ${{ github.ref == 'refs/heads/main' && 'main' || format('sha-{0}', substr(github.sha, 0, 7)) }}
 
 jobs:
   build-and-push:
@@ -68,7 +68,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ matrix.image }}
           tags: |
             type=raw,value=${{ env.DEFAULT_TAG }}
-            type=raw,value=sha-${{ github.sha[0:7] }}
+            type=raw,value=${{ format('sha-{0}', substr(github.sha, 0, 7)) }}
             type=ref,event=branch
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
