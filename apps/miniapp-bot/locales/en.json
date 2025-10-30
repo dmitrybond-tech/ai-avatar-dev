@@ -1,0 +1,22 @@
+{
+  "start": {
+    "choose_language": "Choose your language",
+    "confirm_language": "Language set to English"
+  },
+  "buttons": {
+    "language": "Language",
+    "brief": "📎 Brief for estimate",
+    "open_app": "Open MiniApp",
+    "book": "Book a call",
+    "skills": "Skills",
+    "statuses": "Statuses"
+  },
+  "brief": {
+    "prompt_upload": "Please attach a file (document/photo) and optional text.",
+    "received": "Thanks! Your brief was sent for review."
+  },
+  "errors": {
+    "try_again": "Something went wrong. Please try again later."
+  }
+}
+

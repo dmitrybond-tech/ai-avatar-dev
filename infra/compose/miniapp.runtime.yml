@@ -11,3 +11,12 @@ services:
   web:
     ports:
       - "127.0.0.1:15173:80"
+  bot:
+    environment:
+      - ADMIN_CHAT_ID=${ADMIN_CHAT_ID:-}
+      - SUPPORTED_LANGS=${SUPPORTED_LANGS:-ru,en}
+    volumes:
+      - bot-data:/data
+
+volumes:
+  bot-data: {}
