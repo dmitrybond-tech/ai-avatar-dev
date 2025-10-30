@@ -4,6 +4,11 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      push:
+        description: "Also push images to GHCR"
+        required: false
+        default: "false"
 
 permissions:
   contents: read
@@ -77,8 +82,8 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
-          # Push only on push to main; other events are build-only
-          push: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main') }}
+          # Push on push to main, or when manually requested via workflow_dispatch input
+          push: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main')) || (github.event_name == 'workflow_dispatch' && inputs.push == 'true') }}
           platforms: linux/amd64
           build-args: ${{ matrix.build-args }}
           tags: ${{ steps.meta.outputs.tags }}
