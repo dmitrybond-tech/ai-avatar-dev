@@ -1,10 +1,8 @@
-name: build-and-push-miniapp
+name: MiniApp Images — Build & Push (GHCR)
 
 on:
   push:
-    branches: [ "**" ]
-  pull_request:
-    branches: [ "**" ]
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -75,12 +73,12 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
-          # Push only on push to main or feature/*; PRs and other branches build-only
-          push: ${{ github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/feature/')) }}
+          # Push only on push to main; other events are build-only
+          push: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main') }}
           platforms: linux/amd64
           build-args: ${{ matrix.build-args }}
           tags: ${{ steps.meta.outputs.tags }}
