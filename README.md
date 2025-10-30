@@ -354,6 +354,167 @@ cd ~/ai-avatar-deploy
 docker compose logs -f
 ```
 
+## 🎯 Telegram MiniApp Deployment
+
+The MiniApp consists of three services: API, Bot, and Web. All components are deployed using pre-built images from GitHub Container Registry (GHCR) for production, with optional local builds for development.
+
+### MiniApp Components
+
+- **API** (`apps/miniapp-api`): FastAPI serving `/healthz`, `/rules`, handles Cal.com integration
+- **Bot** (`apps/miniapp-bot`): Telegram bot using aiogram 3.7 with WebApp button support
+- **Web** (`apps/miniapp-web`): Vite + React frontend served by Nginx
+
+### Quick Start (Image-based Deployment)
+
+1. **Setup Environment**
+
+```bash
+cd infra/compose
+cp env.miniapp.example .env.miniapp
+# Edit .env.miniapp and set TELEGRAM_TOKEN (required)
+```
+
+2. **Authenticate to GHCR**
+
+```bash
+# Login to GitHub Container Registry
+docker login ghcr.io -u <your-github-username> -p <your-personal-access-token>
+
+# Your PAT needs 'read:packages' permission
+# Generate at: https://github.com/settings/tokens
+```
+
+3. **Pull and Start Services**
+
+```bash
+# Pull latest images and start all services
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp pull
+
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp up -d
+```
+
+4. **Verify Services**
+
+```bash
+# Check API health
+curl http://localhost:8081/healthz
+# Expected: {"status":"ok"}
+
+# Check rules endpoint
+curl http://localhost:8081/rules?lang=ru
+# Expected: JSON with labels and scenes
+
+# Check bot logs
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp logs -f bot
+# Expected: Bot shows "online" status, no errors about parse_mode; webhook is deleted on start (polling)
+
+# Check web (if exposed)
+curl http://localhost:5175
+# Expected: HTML page (200 OK)
+```
+
+### Local Development (Build from Source)
+
+For local development, you can build images from source:
+
+```bash
+# Use the build override file
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.build.yml \
+  -f infra/compose/miniapp.runtime.yml --env-file infra/compose/.env.miniapp up -d --build
+```
+
+### Production Deployment (Ubuntu VM with Caddy)
+
+On production, Caddy proxies `miniapp.dmitrybond.tech` to:
+- API: `127.0.0.1:8081` (internal port)
+- Web: `127.0.0.1:5175` (internal port)
+
+**Deploy with Images:**
+
+```bash
+# Authenticate to GHCR
+docker login ghcr.io -u <github-username> -p <PAT>
+
+# Deploy using pre-built images
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp pull
+
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp up -d
+```
+
+### Smoke Tests
+
+```bash
+# Test web app
+curl -sI --http2 https://miniapp.dmitrybond.tech/miniapp/ | egrep -i '^(HTTP/|content-type|cache-control)'
+
+# Test API health
+curl -s --http2 https://miniapp.dmitrybond.tech/healthz && echo
+# Expected: {"status":"ok"}
+
+# Test API rules endpoint
+curl -s --http2 'https://miniapp.dmitrybond.tech/rules?lang=ru' | head
+# Expected: JSON with labels and scenes
+
+# Check bot logs
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp logs -n 120 bot
+# Expected: Bot shows "online" status, no errors about parse_mode
+```
+
+### Common Issues
+
+**Bot fails to start with `TypeError: parse_mode`**
+
+- ✅ **Fixed**: Updated to aiogram 3.7 API using `DefaultBotProperties`
+- ✅ **Verify**: Check `apps/miniapp-bot/main.py` imports `DefaultBotProperties` from `aiogram.client.default`
+- ✅ **Verify**: Check `apps/miniapp-bot/requirements.txt` pins `aiogram==3.7.0`
+
+**Bot crashes with "TELEGRAM_TOKEN is not set"**
+
+- ✅ **Fixed**: Added early validation in `main.py`
+- Check `.env.miniapp` file exists and contains `TELEGRAM_TOKEN=your_token_here`
+- Ensure `.env.miniapp` is loaded: `docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml --env-file infra/compose/.env.miniapp up -d`
+
+**Runtime pip/npm installs in logs**
+
+- ✅ **Fixed**: Removed runtime installs from `miniapp.compose.yaml`
+- All dependencies are installed at Docker build-time via Dockerfiles
+- Rebuild images: `docker compose -f infra/compose/miniapp.compose.yaml build --no-cache`
+
+**Web app shows 404 or assets not loading**
+
+- Verify Nginx is serving built files (check `apps/miniapp-web/Dockerfile` uses multi-stage build)
+- Check Caddy configuration forwards to correct internal port (`127.0.0.1:5175`)
+- Verify `VITE_API_BASE_URL` matches production domain
+
+### Environment Variables
+
+See `infra/compose/env.miniapp.example` for all required variables:
+
+- **Required**: `TELEGRAM_TOKEN` (from @BotFather)
+- **Required**: `TELEGRAM_BOT_NAME`
+- **Required**: `WEBAPP_URL` (public URL for Telegram WebApp button)
+- **Required**: `VITE_API_BASE_URL` (for frontend build)
+- **Optional**: `CAL_USERNAME`, `CAL_EVENT_INTRO`, `CAL_HOST`, `DEFAULT_LANG`, `VITE_DEFAULT_LANG`
+
+### Caddy Configuration Notes
+
+Caddy proxies `miniapp.dmitrybond.tech` to internal Docker ports:
+- API: `127.0.0.1:8081` (mapped from container port 8080)
+- Web: `127.0.0.1:5175` (mapped from container port 80)
+
+Ensure Caddy configuration includes reverse proxy rules for:
+- `/healthz` → API
+- `/rules` → API
+- `/miniapp/` → Web app
+
+See `infra/caddy/miniapp.caddy.inc` for example configuration.
+
 ## 🔐 Security Checklist
 
 - [ ] Change `JWT_SECRET` to a strong random value

@@ -14,11 +14,18 @@ CAL_USERNAME = os.getenv("CAL_USERNAME", "dmitrybond")
 CAL_HOST = os.getenv("CAL_HOST", "cal.com")
 
 app = FastAPI(title="MiniApp API", version="1.0.0")
+# CORS configuration for production and local development
+allowed_origins = [
+    "https://miniapp.dmitrybond.tech",  # Production domain
+    "http://localhost:5173",  # Local dev
+    "http://127.0.0.1:5173",  # Local dev alternative
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=allowed_origins,
+    allow_credentials=False,  # Set to False for security
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 

@@ -1,0 +1,92 @@
+name: MiniApp - Build & Push Images
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build and push (${{ matrix.component }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: api
+            context: .
+            dockerfile: apps/miniapp-api/Dockerfile
+            image: ghcr.io/dmitrybond-tech/ai-avatar-miniapp-api
+          - component: bot
+            context: .
+            dockerfile: apps/miniapp-bot/Dockerfile
+            image: ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot
+          - component: web
+            context: .
+            dockerfile: apps/miniapp-web/Dockerfile
+            image: ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (web)
+        if: matrix.component == 'web'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.16.0
+          cache: npm
+          cache-dependency-path: apps/miniapp-web/package-lock.json
+
+      - name: Install and build (web)
+        if: matrix.component == 'web'
+        working-directory: apps/miniapp-web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ matrix.image }}
+          tags: |
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,format=short,prefix=sha-
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VITE_API_BASE_URL=${{ inputs.vite_api_base_url || 'https://miniapp.dmitrybond.tech' }}
+            VITE_DEFAULT_LANG=${{ inputs.vite_default_lang || 'ru' }}
+
+

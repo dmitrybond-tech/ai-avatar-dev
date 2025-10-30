@@ -1,0 +1,64 @@
+name: MiniApp CI
+
+on:
+  push:
+    paths:
+      - 'apps/miniapp-api/**'
+      - 'apps/miniapp-bot/**'
+      - 'apps/miniapp-web/**'
+      - '.github/workflows/miniapp-ci.yml'
+  pull_request:
+    paths:
+      - 'apps/miniapp-api/**'
+      - 'apps/miniapp-bot/**'
+      - 'apps/miniapp-web/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install API deps
+        working-directory: apps/miniapp-api
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate rules.yaml loads and has scenes
+        working-directory: apps/miniapp-api
+        run: |
+          python - <<'PY'
+          import yaml, sys
+          with open('rules.yaml', 'r', encoding='utf-8') as f:
+              data = yaml.safe_load(f)
+          assert 'scenes' in data and isinstance(data['scenes'], dict) and data['scenes'], 'rules.scenes missing'
+          print('rules.yaml OK, scenes:', ','.join(data['scenes'].keys()))
+          PY
+
+      - name: Install Bot deps and compile
+        working-directory: apps/miniapp-bot
+        run: |
+          pip install -r requirements.txt
+          python -m py_compile $(git ls-files '*.py' | tr '\n' ' ')
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Web
+        working-directory: apps/miniapp-web
+        env:
+          VITE_API_BASE_URL: http://localhost:8080
+          VITE_DEFAULT_LANG: ru
+        run: |
+          npm ci
+          npm run build
+

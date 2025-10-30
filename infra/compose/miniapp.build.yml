@@ -1,0 +1,27 @@
+services:
+  api:
+    image: null
+    build:
+      context: ../../apps/miniapp-api
+      dockerfile: Dockerfile
+
+  web:
+    image: null
+    build:
+      context: ../../apps/miniapp-web
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL}
+        - VITE_DEFAULT_LANG=${VITE_DEFAULT_LANG:-ru}
+
+  bot:
+    image: null
+    build:
+      context: ../../apps/miniapp-bot
+      dockerfile: Dockerfile
+
+# --- MiniApp Local Build Override ---
+# This file adds build: sections back for local development
+# Usage: docker compose -f miniapp.compose.yaml -f miniapp.build.yml -f miniapp.runtime.yml up -d --build
+# This is NOT used in production - production uses GHCR images
+

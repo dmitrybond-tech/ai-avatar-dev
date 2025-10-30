@@ -1,27 +1,26 @@
-version: '3.9'
 services:
   api:
-    image: python:3.12-slim
-    working_dir: /app
-    command: bash -lc "pip install -r apps/miniapp-api/requirements.txt && uvicorn apps.miniapp_api.main:app --host 0.0.0.0 --port 8080"
-    volumes:
-      - ../../:/app:rw
+    image: ${IMAGE_API}:${IMAGE_TAG}
+    pull_policy: always
     environment:
       - PORT=8080
       - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
       - CAL_HOST=${CAL_HOST:-cal.com}
       - DEFAULT_LANG=${DEFAULT_LANG:-ru}
-    ports:
-      - "8080:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   bot:
-    image: python:3.12-slim
-    working_dir: /app
-    command: bash -lc "pip install -r apps/miniapp-bot/requirements.txt && python apps/miniapp-bot/main.py"
-    volumes:
-      - ../../:/app:rw
+    image: ${IMAGE_BOT}:${IMAGE_TAG}
+    pull_policy: always
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - BOT_MODE=${BOT_MODE:-polling}
       - TELEGRAM_BOT_NAME=${TELEGRAM_BOT_NAME}
       - API_BASE_URL=${API_BASE_URL:-http://api:8080}
       - DEFAULT_LANG=${DEFAULT_LANG:-ru}
@@ -30,16 +29,16 @@ services:
       - WEBAPP_URL=${WEBAPP_URL:-http://web:5173}
     depends_on:
       - api
+    restart: unless-stopped
 
   web:
-    image: node:20-alpine
-    working_dir: /app/apps/miniapp-web
-    command: sh -lc "npm ci && npm run build && npm run preview -- --port 5173 --host 0.0.0.0"
-    volumes:
-      - ../../:/app:rw
-    environment:
-      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080}
-      - VITE_DEFAULT_LANG=${VITE_DEFAULT_LANG:-ru}
-    ports:
-      - "5173:5173"
+    image: ${IMAGE_WEB}:${IMAGE_TAG}
+    pull_policy: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 

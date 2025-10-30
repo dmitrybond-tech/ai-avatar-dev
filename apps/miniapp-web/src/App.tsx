@@ -9,12 +9,45 @@ type Rules = {
   scenes: Record<string, any>
 }
 
+// Telegram WebApp types
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp?: {
+        ready: () => void
+        initDataUnsafe: any
+        openTgLink: (url: string) => void
+      }
+    }
+  }
+}
+
 function useQuery() {
   return useMemo(() => new URLSearchParams(window.location.search), [])
 }
 
+function useTelegramContext() {
+  const [isTelegram, setIsTelegram] = useState(false)
+  const [initData, setInitData] = useState<any>(null)
+
+  useEffect(() => {
+    // Check if we're in Telegram WebApp context
+    if (window.Telegram?.WebApp) {
+      // Initialize Telegram WebApp
+      window.Telegram.WebApp.ready()
+      setInitData(window.Telegram.WebApp.initDataUnsafe)
+      setIsTelegram(true)
+    } else {
+      setIsTelegram(false)
+    }
+  }, [])
+
+  return { isTelegram, initData }
+}
+
 export function App() {
   const query = useQuery()
+  const { isTelegram, initData } = useTelegramContext()
   const [lang, setLang] = useState<'ru' | 'en'>(() => (query.get('lang') === 'en' ? 'en' : DEFAULT_LANG))
   const [rules, setRules] = useState<Rules | null>(null)
   const [loading, setLoading] = useState(true)
@@ -41,6 +74,26 @@ export function App() {
     } else {
       window.open(data.url, '_blank')
     }
+  }
+
+  // Fallback UI for when not in Telegram context
+  if (!isTelegram) {
+    return (
+      <div className="min-h-dvh w-full bg-white text-black flex items-center justify-center">
+        <div className="max-w-md mx-auto p-6 text-center">
+          <h1 className="text-2xl font-bold mb-4">Open in Telegram</h1>
+          <p className="text-gray-600 mb-6">
+            This Mini App is designed to work within Telegram. Please open it from the bot.
+          </p>
+          <a
+            href="https://t.me/db_ai_avatar_bot/app?startapp=start"
+            className="inline-block bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+          >
+            Open in Telegram
+          </a>
+        </div>
+      </div>
+    )
   }
 
   return (
