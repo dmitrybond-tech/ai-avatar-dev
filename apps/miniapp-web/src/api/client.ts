@@ -1,4 +1,4 @@
-import { apiUrl } from "../lib/apiBase";
+import { apiUrl } from "../lib/apiBase.ts";
 import type { RulesResponse, TasksStatusResponse, CalLinkResponse, ChatOut } from "../types";
 
 export async function getRules(): Promise<RulesResponse> {
