@@ -17,13 +17,18 @@ RUN pip install --no-cache-dir -r apps/miniapp-api/requirements.txt
 # Copy all sources (keeps repo structure intact)
 COPY . .
 
+# Ensure underscore module is available and overlay explicit underscore package if present
+COPY apps/miniapp_api ./apps/miniapp_api
+
 # Create import-friendly alias to support module path "apps.miniapp_api"
 RUN mkdir -p apps \
-    && cp -r apps/miniapp-api apps/miniapp_api \
+    && cp -r apps/miniapp-api apps/miniapp_api || true \
     && touch apps/__init__.py \
     && touch apps/miniapp_api/__init__.py
 
 EXPOSE 8080
+
+ENV PYTHONPATH=/app
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl -fsS http://127.0.0.1:8080/healthz || exit 1
 

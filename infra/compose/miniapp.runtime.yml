@@ -1,6 +1,6 @@
 services:
   web:
-    image: ${WEB_IMAGE}:${WEB_TAG}
+    image: ${IMAGE_WEB:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web}:${IMAGE_TAG:-main}
     ports:
       - "127.0.0.1:15173:8080"
     healthcheck:
@@ -13,7 +13,7 @@ services:
     pull_policy: always
 
   api:
-    image: ${API_IMAGE}:${API_TAG}
+    image: ${IMAGE_API:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-api}:${IMAGE_TAG:-main}
     ports:
       - "127.0.0.1:18080:8080"
     healthcheck:
@@ -24,9 +24,14 @@ services:
       start_period: 10s
     restart: unless-stopped
     pull_policy: always
+    environment:
+      NOTION_API_KEY: ${NOTION_API_KEY}
+      NOTION_PUBLIC_TASKS_DB_ID: ${NOTION_PUBLIC_TASKS_DB_ID}
+      NOTION_TIMEOUT: ${NOTION_TIMEOUT:-10}
+      WEBSITE_ORIGIN: ${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
 
   bot:
-    image: ${BOT_IMAGE}:${BOT_TAG}
+    image: ${IMAGE_BOT:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot}:${IMAGE_TAG:-main}
     restart: unless-stopped
     pull_policy: always
     env_file:
