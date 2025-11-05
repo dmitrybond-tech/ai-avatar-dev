@@ -3,28 +3,27 @@ FROM node:20.14.0-alpine AS build
 
 WORKDIR /app
 
-# Bring in repo (monorepo) contents; CI will set context to repository root
-# so we can respect the existing package manager and workspaces
-COPY . .
+# Copy only the app to avoid root-level .dockerignore interference
+COPY apps/miniapp-web/ ./
 
-# Detect lockfile and install deterministically
+# Detect lockfile and install deterministically inside the app folder
 RUN set -eux; \
     apk add --no-cache git bash; \
     if [ -f pnpm-lock.yaml ]; then \
       corepack enable; corepack prepare pnpm@latest --activate; \
       pnpm install --frozen-lockfile; \
-      pnpm -C apps/miniapp-web run build; \
+      pnpm run build; \
     elif [ -f yarn.lock ]; then \
       corepack enable; corepack prepare yarn@1.22.22 --activate; \
       yarn install --frozen-lockfile; \
-      yarn --cwd apps/miniapp-web build; \
+      yarn build; \
     elif [ -f package-lock.json ]; then \
       npm ci --no-audit --no-fund; \
-      npm --prefix apps/miniapp-web run build; \
+      npm run build; \
     else \
       echo "No lockfile found; falling back to npm install"; \
       npm install --no-audit --no-fund; \
-      npm --prefix apps/miniapp-web run build; \
+      npm run build; \
     fi
 
 ## -------- Runtime stage: nginx serving on 8080 --------
@@ -33,7 +32,7 @@ FROM nginx:1.27.2-alpine AS runtime
 WORKDIR /usr/share/nginx/html
 
 # Copy built SPA assets
-COPY --from=build /app/apps/miniapp-web/dist/ /usr/share/nginx/html/
+COPY --from=build /app/dist/ /usr/share/nginx/html/
 
 # Provide nginx config inline as required
 RUN set -eux; \
