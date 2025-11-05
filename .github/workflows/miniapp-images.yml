@@ -86,7 +86,7 @@ jobs:
       - name: Build and Push
         uses: docker/build-push-action@v6.9.0
         with:
-          context: ./apps/miniapp-api
+          context: .
           file: ./apps/miniapp-api/Dockerfile
           push: true
           tags: |
@@ -139,7 +139,7 @@ jobs:
         if: ${{ hashFiles('apps/miniapp-bot/Dockerfile') != '' }}
         uses: docker/build-push-action@v6.9.0
         with:
-          context: ./apps/miniapp-bot
+          context: .
           file: ./apps/miniapp-bot/Dockerfile
           push: true
           tags: |
@@ -156,7 +156,7 @@ jobs:
         if: ${{ hashFiles('apps/miniapp-bot/Dockerfile') == '' }}
         uses: docker/build-push-action@v6.9.0
         with:
-          context: ./apps/miniapp_bot
+          context: .
           file: ./apps/miniapp_bot/Dockerfile
           push: true
           tags: |
