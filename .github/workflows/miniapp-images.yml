@@ -2,6 +2,193 @@ name: MiniApp Images — Build & Push (GHCR)
 
 on:
   push:
+    branches: [ "main" ]
+    paths:
+      - 'apps/miniapp-web/**'
+      - 'apps/miniapp-api/**'
+      - 'apps/miniapp-bot/**'
+      - 'apps/miniapp_bot/**'
+      - '.github/workflows/miniapp-images.yml'
+  workflow_dispatch: {}
+
+jobs:
+  web:
+    name: Build & Push Web
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: miniapp-web-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.7.1
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v6.9.0
+        with:
+          context: ./apps/miniapp-web
+          file: ./apps/miniapp-web/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=miniapp-web
+          provenance: false
+          sbom: false
+
+      - name: Export image digest
+        run: |
+          mkdir -p dist
+          echo "${{ env.IMAGE }}@$(docker buildx imagetools inspect ${{ env.IMAGE }}:${{ github.sha }} --format '{{json .Manifest.Digest}}' | sed 's/[\"}]//g')" > dist/image-digest-web.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: miniapp-web-image-digest
+          path: dist/image-digest-web.txt
+
+  api:
+    name: Build & Push API
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: miniapp-api-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/dmitrybond-tech/ai-avatar-miniapp-api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.7.1
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v6.9.0
+        with:
+          context: ./apps/miniapp-api
+          file: ./apps/miniapp-api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=miniapp-api
+          provenance: false
+          sbom: false
+
+      - name: Export image digest
+        run: |
+          mkdir -p dist
+          echo "${{ env.IMAGE }}@$(docker buildx imagetools inspect ${{ env.IMAGE }}:${{ github.sha }} --format '{{json .Manifest.Digest}}' | sed 's/[\"}]//g')" > dist/image-digest-api.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: miniapp-api-image-digest
+          path: dist/image-digest-api.txt
+
+  bot:
+    name: Build & Push Bot
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: miniapp-bot-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.7.1
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push (apps/miniapp-bot if exists)
+        if: ${{ hashFiles('apps/miniapp-bot/Dockerfile') != '' }}
+        uses: docker/build-push-action@v6.9.0
+        with:
+          context: ./apps/miniapp-bot
+          file: ./apps/miniapp-bot/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=miniapp-bot
+          provenance: false
+          sbom: false
+
+      - name: Build and Push (apps/miniapp_bot fallback)
+        if: ${{ hashFiles('apps/miniapp-bot/Dockerfile') == '' }}
+        uses: docker/build-push-action@v6.9.0
+        with:
+          context: ./apps/miniapp_bot
+          file: ./apps/miniapp_bot/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=miniapp-bot
+          provenance: false
+          sbom: false
+
+      - name: Export image digest
+        run: |
+          mkdir -p dist
+          echo "${{ env.IMAGE }}@$(docker buildx imagetools inspect ${{ env.IMAGE }}:${{ github.sha }} --format '{{json .Manifest.Digest}}' | sed 's/[\"}]//g')" > dist/image-digest-bot.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: miniapp-bot-image-digest
+          path: dist/image-digest-bot.txt
+name: MiniApp Images — Build & Push (GHCR)
+
+on:
+  push:
     branches: [ main ]
   workflow_dispatch:
     inputs:
