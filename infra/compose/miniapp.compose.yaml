@@ -7,6 +7,9 @@ services:
       - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
       - CAL_HOST=${CAL_HOST:-cal.com}
       - DEFAULT_LANG=${DEFAULT_LANG:-ru}
+      - NOTION_API_KEY=${NOTION_API_KEY:-}
+      - NOTION_PUBLIC_TASKS_DB_ID=${NOTION_PUBLIC_TASKS_DB_ID:-}
+      - NOTION_TIMEOUT=${NOTION_TIMEOUT:-10}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]

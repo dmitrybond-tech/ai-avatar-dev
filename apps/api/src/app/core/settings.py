@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     tts_api_key: str = ""
     tts_voice_preset: str = "male_russian_1"
 
+    # Notion
+    notion_api_key: str = ""
+    notion_public_tasks_db_id: str = ""
+    notion_timeout: int = 10
+
     @property
     def database_url(self) -> str:
         """Build PostgreSQL connection URL."""
