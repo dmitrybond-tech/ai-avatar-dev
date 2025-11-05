@@ -1,0 +1,91 @@
+name: miniapp-web CI
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ghcr.io/dmitrybond-tech/miniapp-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.14.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.14.x
+          cache: 'npm'
+
+      - name: Detect package manager
+        id: pm
+        run: |
+          if [ -f pnpm-lock.yaml ]; then echo "manager=pnpm" >> $GITHUB_OUTPUT; exit 0; fi
+          if [ -f yarn.lock ]; then echo "manager=yarn" >> $GITHUB_OUTPUT; exit 0; fi
+          if [ -f package-lock.json ]; then echo "manager=npm" >> $GITHUB_OUTPUT; exit 0; fi
+          echo "manager=npm" >> $GITHUB_OUTPUT
+
+      - name: Enable Corepack (pnpm/yarn)
+        if: steps.pm.outputs.manager != 'npm'
+        run: |
+          corepack enable
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pnpm
+            .yarn/cache
+            node_modules
+          key: ${{ runner.os }}-${{ steps.pm.outputs.manager }}-${{ hashFiles(format('**/{0}', steps.pm.outputs.manager == 'pnpm' && 'pnpm-lock.yaml' || steps.pm.outputs.manager == 'yarn' && 'yarn.lock' || 'package-lock.json')) }}
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.pm.outputs.manager }}-
+
+      - name: Install dependencies (root)
+        run: |
+          if [ "${{ steps.pm.outputs.manager }}" = "pnpm" ]; then pnpm install --frozen-lockfile; fi
+          if [ "${{ steps.pm.outputs.manager }}" = "yarn" ]; then corepack prepare yarn@1.22.22 --activate && yarn install --frozen-lockfile; fi
+          if [ "${{ steps.pm.outputs.manager }}" = "npm" ]; then npm ci --no-audit --no-fund; fi
+
+      - name: Vite build check (apps/miniapp-web)
+        working-directory: apps/miniapp-web
+        run: |
+          if [ "${{ steps.pm.outputs.manager }}" = "pnpm" ]; then pnpm run build; fi
+          if [ "${{ steps.pm.outputs.manager }}" = "yarn" ]; then yarn build; fi
+          if [ "${{ steps.pm.outputs.manager }}" = "npm" ]; then npm run build; fi
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/miniapp-web/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || '' }}
+            VITE_DEFAULT_LANG=${{ vars.VITE_DEFAULT_LANG || '' }}
+
+
