@@ -1,21 +1,14 @@
-from typing import List
+from typing import List, Dict
 
-from fastapi import APIRouter, HTTPException
-
-from apps.miniapp_api.integrations.notion_public_tasks import (
-    PublicTaskOut,
-    query_public_tasks,
-)
+from fastapi import APIRouter
 
 
-router = APIRouter(prefix="/tasks")
+router = APIRouter(prefix="/tasks", tags=["public-tasks"])
 
 
-@router.get("/public", response_model=List[PublicTaskOut])
-def list_public() -> List[PublicTaskOut]:
-    try:
-        return query_public_tasks()
-    except Exception as e:  # noqa: BLE001 - surface integration errors as 500
-        raise HTTPException(status_code=500, detail=str(e))
+@router.get("/public", response_model=List[Dict])
+def list_public() -> List[Dict]:
+    # Minimal read-only endpoint for now; integrate Notion later
+    return []
 
 
