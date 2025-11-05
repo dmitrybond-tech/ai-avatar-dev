@@ -1,22 +1,36 @@
 services:
-  api:
-    ports:
-      - "127.0.0.1:18080:8080"
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
   web:
+    image: ${WEB_IMAGE}:${WEB_TAG}
     ports:
-      - "127.0.0.1:15173:80"
+      - "${WEB_HOST}:${WEB_HOST_PORT}:${WEB_CONTAINER_PORT}"
+    healthcheck:
+      test: ["CMD-SHELL","wget -qO- http://127.0.0.1:${WEB_CONTAINER_PORT}/ || exit 1"]
+      interval: 20s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    pull_policy: always
+
+  api:
+    image: ${API_IMAGE}:${API_TAG}
+    ports:
+      - "${API_HOST}:${API_HOST_PORT}:${API_CONTAINER_PORT}"
+    healthcheck:
+      test: ["CMD-SHELL","wget -qO- http://127.0.0.1:${API_CONTAINER_PORT}/healthz || exit 1"]
+      interval: 20s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    pull_policy: always
+
   bot:
-    environment:
-      - ADMIN_CHAT_ID=${ADMIN_CHAT_ID:-}
-      - SUPPORTED_LANGS=${SUPPORTED_LANGS:-ru,en}
-    volumes:
-      - bot-data:/data
+    image: ${BOT_IMAGE}:${BOT_TAG}
+    restart: unless-stopped
+    pull_policy: always
+    env_file:
+      - .env.miniapp
 
 volumes:
   bot-data: {}

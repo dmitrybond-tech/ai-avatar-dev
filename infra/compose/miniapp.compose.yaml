@@ -26,7 +26,7 @@ services:
       - DEFAULT_LANG=${DEFAULT_LANG:-ru}
       - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
       - CAL_EVENT_INTRO=${CAL_EVENT_INTRO:-intro-30m}
-      - WEBAPP_URL=${WEBAPP_URL:-http://web:5173}
+      - WEBAPP_URL=${WEBAPP_URL:-http://web:8080}
     depends_on:
       - api
     restart: unless-stopped
@@ -36,7 +36,7 @@ services:
     pull_policy: always
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
       interval: 30s
       timeout: 10s
       retries: 3
