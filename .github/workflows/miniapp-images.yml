@@ -178,4 +178,4 @@ jobs:
         uses: actions/upload-artifact@v4.4.3
         with:
           name: miniapp-bot-image-digest
-      path: dist/image-digest-bot.txt
+          path: dist/image-digest-bot.txt
