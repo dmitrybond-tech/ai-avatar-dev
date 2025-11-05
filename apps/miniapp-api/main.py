@@ -25,6 +25,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+try:
+    # Mount public tasks router under /api prefix
+    from apps.miniapp_api.routers.public_tasks import router as public_tasks_router
+    app.include_router(public_tasks_router, prefix="/api")
+except Exception:
+    # Optional in dev if dependencies are missing; avoids startup crash
+    pass
+
 
 class SkillItem(BaseModel):
     id: str

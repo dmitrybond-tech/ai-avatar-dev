@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { PrimaryActions } from './components/Buttons'
 import { SkillsList } from './components/Skills'
 import { TasksList } from './components/Tasks'
+import TasksBoard from './components/TasksBoard'
 import { ChatBox } from './components/Chat'
 
 function useQuery() {
@@ -23,6 +24,7 @@ export function App() {
           <>
             <PrimaryActions onSkills={()=>setView('skills')} onTasks={()=>setView('tasks')} />
             <ChatBox />
+            <TasksBoard />
           </>
         )}
         {view === 'skills' && (
