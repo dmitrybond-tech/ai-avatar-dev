@@ -3,8 +3,8 @@ FROM node:20.14.0-alpine AS build
 
 WORKDIR /app
 
-# Copy only the app to avoid root-level .dockerignore interference
-COPY apps/miniapp-web/ ./
+# Copy app sources (workflow will set context to apps/miniapp-web)
+COPY . .
 
 # Detect lockfile and install deterministically inside the app folder
 RUN set -eux; \
