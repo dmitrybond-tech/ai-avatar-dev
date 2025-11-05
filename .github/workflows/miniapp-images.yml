@@ -3,12 +3,6 @@ name: MiniApp Images — Build & Push (GHCR)
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - 'apps/miniapp-web/**'
-      - 'apps/miniapp-api/**'
-      - 'apps/miniapp-bot/**'
-      - 'apps/miniapp_bot/**'
-      - '.github/workflows/miniapp-images.yml'
   workflow_dispatch: {}
 
 jobs:
