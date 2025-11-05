@@ -2,26 +2,26 @@ services:
   web:
     image: ${WEB_IMAGE}:${WEB_TAG}
     ports:
-      - "${WEB_HOST}:${WEB_HOST_PORT}:${WEB_CONTAINER_PORT}"
+      - "127.0.0.1:15173:8080"
     healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://127.0.0.1:${WEB_CONTAINER_PORT}/ || exit 1"]
-      interval: 20s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     pull_policy: always
 
   api:
     image: ${API_IMAGE}:${API_TAG}
     ports:
-      - "${API_HOST}:${API_HOST_PORT}:${API_CONTAINER_PORT}"
+      - "127.0.0.1:18080:8080"
     healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://127.0.0.1:${API_CONTAINER_PORT}/healthz || exit 1"]
-      interval: 20s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     pull_policy: always
 
