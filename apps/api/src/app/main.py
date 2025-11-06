@@ -89,6 +89,7 @@ app.include_router(chat_stub.router, tags=["chat-stub"])
 app.include_router(client_log.router, tags=["client-log"])
 app.include_router(public_tasks.router)
 app.include_router(briefs.router)
+app.include_router(briefs.alias_router)
 
 
 if __name__ == "__main__":
