@@ -2,13 +2,13 @@ services:
   api:
     image: ${IMAGE_API:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-api}:${IMAGE_TAG:-main}
     pull_policy: always
+    env_file:
+      - .env.miniapp
     environment:
       - PORT=8080
       - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
       - CAL_HOST=${CAL_HOST:-cal.com}
       - DEFAULT_LANG=${DEFAULT_LANG:-ru}
-      - NOTION_API_KEY=${NOTION_API_KEY}
-      - NOTION_PUBLIC_TASKS_DB_ID=${NOTION_PUBLIC_TASKS_DB_ID}
       - NOTION_TIMEOUT=${NOTION_TIMEOUT:-10}
       - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
     restart: unless-stopped
@@ -22,6 +22,8 @@ services:
   bot:
     image: ${IMAGE_BOT:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot}:${IMAGE_TAG:-main}
     pull_policy: always
+    env_file:
+      - .env.miniapp
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - BOT_MODE=${BOT_MODE:-polling}

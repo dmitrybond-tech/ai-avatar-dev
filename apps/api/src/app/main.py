@@ -20,6 +20,10 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     logger.info("Starting API server...")
+    # Sanity-check presence of Notion env vars without logging secrets
+    import os as _os
+    for k in ("NOTION_API_KEY", "NOTION_PUBLIC_TASKS_DB_ID"):
+        logger.info("%s present=%s", k, bool(_os.getenv(k)))
     await init_db()
     
     # Ensure TTS data directory exists

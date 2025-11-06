@@ -24,9 +24,9 @@ services:
       start_period: 10s
     restart: unless-stopped
     pull_policy: always
+    env_file:
+      - .env.miniapp
     environment:
-      NOTION_API_KEY: ${NOTION_API_KEY}
-      NOTION_PUBLIC_TASKS_DB_ID: ${NOTION_PUBLIC_TASKS_DB_ID}
       NOTION_TIMEOUT: ${NOTION_TIMEOUT:-10}
       WEBSITE_ORIGIN: ${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
 
