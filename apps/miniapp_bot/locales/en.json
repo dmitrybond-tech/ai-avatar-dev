@@ -11,13 +11,15 @@
   "messages": {
     "main": "Choose an action:"
   },
+  "language": {
+    "choose": "Choose your language:",
+    "changed": "Language updated to English."
+  },
   "buttons": {
     "language": "Language",
     "brief": "📎 Brief for estimate",
     "open_app": "Open MiniApp",
-    "book": "Book a call",
-    "skills": "Skills",
-    "statuses": "Statuses"
+    "book": "Book a call"
   },
   "brief": {
     "prompt_upload": "Please attach a file (document/photo) and optional text.",

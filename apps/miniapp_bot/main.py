@@ -14,7 +14,6 @@ from aiogram.types import (
     WebAppInfo,
 )
 from aiogram.client.default import DefaultBotProperties
-from aiogram.utils.markdown import hbold
 from pydantic import BaseModel
 
 from .i18n import I18N
@@ -105,6 +104,15 @@ def main_menu(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def language_menu() -> InlineKeyboardMarkup:
+    """Create inline keyboard for language selection."""
+    rows = [
+        [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set_lang:ru")],
+        [InlineKeyboardButton(text="🇬🇧 English", callback_data="set_lang:en")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 @dp.message(Command("healthz"))
 async def cmd_healthz(message: Message) -> None:
     await message.answer("ok")
@@ -112,22 +120,33 @@ async def cmd_healthz(message: Message) -> None:
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message) -> None:
-    """Handle /start: detect locale and show main inline menu."""
+    """Handle /start: show language selection if no locale, otherwise show main menu."""
     user_id = message.from_user.id if message.from_user else 0
-    profile_lang = (message.from_user.language_code if message.from_user else None) or None
     session = get_session(user_id)
     stored = bot_state.get_lang(user_id)
-    lang = i18n.resolve_lang(user_id, stored, profile_lang)
-    session.lang = lang
-    await message.answer(i18n.t(lang, "messages.main"), reply_markup=main_menu(lang))
+    
+    # Check if user has explicitly chosen a language (stored in persistent state)
+    if not stored:
+        # No language chosen yet - show language selection
+        # Use a default language for the "choose language" message itself
+        profile_lang = (message.from_user.language_code if message.from_user else None) or None
+        default_lang = i18n.resolve_lang(user_id, None, profile_lang)
+        await message.answer(i18n.t(default_lang, "language.choose"), reply_markup=language_menu())
+        return
+    
+    # Language is set - show main menu
+    session.lang = stored
+    await message.answer(i18n.t(session.lang, "messages.main"), reply_markup=main_menu(session.lang))
 
 
 @dp.message(Command("language"))
 async def cmd_language(message: Message) -> None:
-    # Retain command but respond with current menu
+    """Handle /language: always show language selection."""
     user_id = message.from_user.id if message.from_user else 0
     session = get_session(user_id)
-    await message.answer(i18n.t(session.lang, "messages.main"), reply_markup=main_menu(session.lang))
+    # Use current session language or default for the "choose language" message
+    lang = session.lang or DEFAULT_LANG
+    await message.answer(i18n.t(lang, "language.choose"), reply_markup=language_menu())
 
 
 # Removed: book via reply keyboard; now URL button is in inline menu
@@ -158,18 +177,34 @@ _awaiting_brief: set[int] = set()
 # Removed: old ReplyKeyboard menu
 
 
-@dp.message(F.text.in_({"Русский", "English"}))
-async def on_language_choice(message: Message) -> None:
-    user_id = message.from_user.id if message.from_user else 0
+@dp.callback_query(F.data.startswith("set_lang:"))
+async def on_language_callback(callback: CallbackQuery) -> None:
+    """Handle language selection callback."""
+    user_id = callback.from_user.id if callback.from_user else 0
+    lang_code = callback.data.split(":")[1] if ":" in callback.data else DEFAULT_LANG
+    
+    # Validate language
+    if lang_code not in set(SUPPORTED_LANGS.split(",")):
+        lang_code = DEFAULT_LANG
+    
+    # Save language to session and persistent storage
     session = get_session(user_id)
-    choice = (message.text or "").lower()
-    lang = "ru" if "рус" in choice else "en"
-    # validate against supported langs
-    if lang not in set(SUPPORTED_LANGS.split(",")):
-        lang = DEFAULT_LANG
-    bot_state.set_lang(user_id, lang)
-    session.lang = lang
-    await message.answer(i18n.t(lang, "start.confirm_language"), reply_markup=_main_keyboard(lang))
+    session.lang = lang_code
+    bot_state.set_lang(user_id, lang_code)
+    
+    # Answer callback query
+    await callback.answer()
+    
+    # Try to edit the message, fallback to new message if edit fails
+    if callback.message:
+        try:
+            await callback.message.edit_text(i18n.t(lang_code, "language.changed"))
+        except Exception:
+            # If edit fails, send a new message
+            await callback.message.answer(i18n.t(lang_code, "language.changed"))
+        
+        # Send main menu
+        await callback.message.answer(i18n.t(lang_code, "messages.main"), reply_markup=main_menu(lang_code))
 
 
 # Removed: brief upload flow (now external URL)
