@@ -52,7 +52,7 @@ async def create_brief_page(
                         ]
                     },
                     "Status": {
-                        "select": {
+                        "status": {
                             "name": "Backlog"
                         }
                     },

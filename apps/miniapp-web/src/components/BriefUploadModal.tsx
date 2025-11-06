@@ -36,6 +36,8 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ name: "", company: "", phone: "", email: "", message: "" });
   const [file, setFile] = useState<File | null>(null);
+  const [submittedId, setSubmittedId] = useState<string | null>(null);
+  const [submitStatus, setSubmitStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   if (!open) return null;
   // Dev-safe visibility probe to help diagnose blank overlays
@@ -45,16 +47,18 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
   const phoneSanitized = useMemo(() => form.phone.replace(/[^\d+]/g, ""), [form.phone]);
   const emailValid = emailRx.test(form.email);
   const phoneValid = phoneSanitized.length >= 7;
-  const isReady = Boolean(form.name && form.company && emailValid && phoneValid && file && !busy);
+  const isReady = Boolean(form.name && form.company && emailValid && phoneValid && file && !busy && !submittedId);
 
   const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] || null;
     setFile(f);
+    setSubmitStatus(null);
   };
 
   const submit = async () => {
     if (!isReady || !file) return;
     setBusy(true);
+    setSubmitStatus(null);
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -66,25 +70,45 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
       if (form.message?.trim()) {
         fd.append("message", form.message.trim());
       }
-      const res = await fetch("/briefs/upload", {
-        method: "POST",
-        body: fd,
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      const tg = (window as any).Telegram?.WebApp;
-      if (tg?.showPopup) {
-        tg.showPopup({ title: i18n.t("brief.title"), message: i18n.t("brief.success"), buttons: [{ type: "ok" }] });
-      } else {
-        alert(i18n.t("brief.success"));
+
+      async function postBrief(fd: FormData) {
+        const tryPost = async (url: string) => {
+          const res = await fetch(url, { method: "POST", body: fd });
+          if (!res.ok) throw new Error(String(res.status));
+          return res.json();
+        };
+        try {
+          return await tryPost("/briefs/upload");
+        } catch (e: any) {
+          // fallback if nginx doesn't proxy /briefs/ yet
+          return await tryPost("/api/briefs/upload");
+        }
       }
-      onClose();
+
+      const result = await postBrief(fd);
+      if (result?.ok && result?.request_id) {
+        const requestId = result.request_id;
+        const isDedup = result.dedup === true;
+        setSubmittedId(requestId);
+        
+        const successMsg = isDedup
+          ? `${i18n.t("brief.success")} | ${i18n.get() === "ru" ? "Уже отправлено ранее" : "Already submitted recently"} | ID: ${requestId}`
+          : `${i18n.t("brief.success")} | ID: ${requestId}`;
+        
+        setSubmitStatus({ type: "success", message: successMsg });
+        
+        // Reset form only if not a duplicate
+        if (!isDedup) {
+          setForm({ name: "", company: "", phone: "", email: "", message: "" });
+          setFile(null);
+          if (fileRef.current) fileRef.current.value = "";
+        }
+      } else {
+        throw new Error(i18n.t("brief.error"));
+      }
     } catch (e) {
-      const tg = (window as any).Telegram?.WebApp;
-      if (tg?.showPopup) {
-        tg.showPopup({ title: i18n.t("brief.title"), message: i18n.t("brief.error"), buttons: [{ type: "ok" }] });
-      } else {
-        alert(i18n.t("brief.error"));
-      }
+      const errorMsg = e instanceof Error ? e.message : i18n.t("brief.error");
+      setSubmitStatus({ type: "error", message: errorMsg });
     } finally {
       setBusy(false);
     }
@@ -97,14 +121,67 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
         <ModalErrorBoundary>
           <h2 className="text-lg font-semibold mb-3 dark:text-white">{i18n.t("brief.title")}</h2>
 
+          {submitStatus && (
+            <div
+              role="alert"
+              aria-live="polite"
+              className={`mb-4 p-3 rounded-md ${
+                submitStatus.type === "success"
+                  ? "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-800"
+                  : "bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span>{submitStatus.message}</span>
+                {submittedId && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(submittedId);
+                        // Optional: show brief feedback
+                        const originalMsg = submitStatus.message;
+                        setSubmitStatus({
+                          type: "success",
+                          message: originalMsg.replace(submittedId, `${submittedId} ${i18n.get() === "ru" ? "(скопировано)" : "(copied)"}`),
+                        });
+                        setTimeout(() => setSubmitStatus({ type: "success", message: originalMsg }), 2000);
+                      } catch (e) {
+                        // Fallback for older browsers
+                        const textArea = document.createElement("textarea");
+                        textArea.value = submittedId;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        try {
+                          document.execCommand("copy");
+                        } catch (err) {
+                          // Ignore
+                        }
+                        document.body.removeChild(textArea);
+                      }
+                    }}
+                    className="px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-200 rounded hover:bg-green-200 dark:hover:bg-green-700 transition-colors"
+                    title={i18n.get() === "ru" ? "Копировать ID" : "Copy ID"}
+                  >
+                    {i18n.get() === "ru" ? "Копировать" : "Copy"}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-3">
           <label className="block">
             <span className="form-label block mb-1">{i18n.get()==="ru" ? "Имя" : "Name"}</span>
             <input
               className="w-full rounded-md border px-3 py-2 bg-white dark:bg-zinc-800 dark:border-zinc-700 dark:text-white placeholder-white/70"
               value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, name: e.target.value });
+                setSubmitStatus(null);
+              }}
               placeholder={i18n.get()==="ru" ? "Ваше имя" : "Your name"}
+              disabled={!!submittedId}
             />
           </label>
 
@@ -113,8 +190,12 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
             <input
               className="w-full rounded-md border px-3 py-2 bg-white dark:bg-zinc-800 dark:border-zinc-700 dark:text-white placeholder-white/70"
               value={form.company}
-              onChange={(e) => setForm({ ...form, company: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, company: e.target.value });
+                setSubmitStatus(null);
+              }}
               placeholder={i18n.get()==="ru" ? "Название компании" : "Company name"}
+              disabled={!!submittedId}
             />
           </label>
 
@@ -123,9 +204,13 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
             <input
               className="w-full rounded-md border px-3 py-2 bg-white dark:bg-zinc-800 dark:border-zinc-700 dark:text-white placeholder-white/70"
               value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, phone: e.target.value });
+                setSubmitStatus(null);
+              }}
               placeholder={i18n.get()==="ru" ? "+7 999 123-45-67" : "+1 555 000 1234"}
               inputMode="tel"
+              disabled={!!submittedId}
             />
             {!phoneValid && form.phone && <p className="hint error mt-1 text-sm">{i18n.get()==="ru" ? "Проверьте номер" : "Check phone format"}</p>}
           </label>
@@ -136,9 +221,13 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
               type="email"
               className="w-full rounded-md border px-3 py-2 bg-white dark:bg-zinc-800 dark:border-zinc-700 dark:text-white placeholder-white/70"
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, email: e.target.value });
+                setSubmitStatus(null);
+              }}
               placeholder="you@example.com"
               inputMode="email"
+              disabled={!!submittedId}
             />
             {!emailValid && form.email && <p className="hint error mt-1 text-sm">{i18n.get()==="ru" ? "Проверьте email" : "Check email"}</p>}
           </label>
@@ -149,8 +238,12 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
               className="w-full rounded-md border px-3 py-2 bg-white dark:bg-zinc-800 dark:border-zinc-700 dark:text-white placeholder-white/70"
               rows={3}
               value={form.message}
-              onChange={(e) => setForm({ ...form, message: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, message: e.target.value });
+                setSubmitStatus(null);
+              }}
               placeholder={i18n.get()==="ru" ? "Коротко о задаче..." : "Short description..."}
+              disabled={!!submittedId}
             />
           </label>
 
@@ -163,6 +256,7 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
               capture="environment"
               onChange={onPickFile}
               className="w-full text-sm"
+              disabled={!!submittedId}
             />
             <p className="hint mt-1 text-xs">
               {i18n.get()==="ru"
@@ -177,11 +271,15 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
               {i18n.t("brief.cancel")}
             </button>
             <button
-              disabled={!isReady}
+              disabled={!isReady || !!submittedId}
               className="px-3 py-1 rounded-md border bg-black text-white disabled:opacity-50"
               onClick={submit}
             >
-              {i18n.t("brief.send")}
+              {submittedId
+                ? (i18n.get() === "ru" ? "Отправлено" : "Submitted")
+                : busy
+                ? (i18n.get() === "ru" ? "Отправка..." : "Sending...")
+                : i18n.t("brief.send")}
             </button>
           </div>
         </ModalErrorBoundary>
