@@ -1,120 +1,52 @@
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import JSONResponse
 
-# Import from integrations
-try:
-    from apps.miniapp_api.integrations.notion_public import (
-        PublicTaskOut,
-        query_public_tasks,
-        resolve_schema,
-        _client,
-        NOTION_PUBLIC_TASKS_DB_ID,
-        NOTION_API_KEY,
-    )
-except ImportError:
-    # If import fails, we'll handle it in the endpoints
-    PublicTaskOut = None
-    query_public_tasks = None
-    resolve_schema = None
-    _client = None
-    NOTION_PUBLIC_TASKS_DB_ID = None
-    NOTION_API_KEY = None
+from apps.miniapp_api.integrations.notion_public import _client, resolve_schema, query_public_tasks
+
+import os
 
 
 router = APIRouter(prefix="/tasks", tags=["public-tasks"])
 
 
-def _parse_statuses(statuses_str: str | None) -> List[str] | None:
-    """Parse comma-separated statuses string into list."""
-    if not statuses_str:
-        return None
-    return [s.strip() for s in statuses_str.split(",") if s.strip()]
-
-
-# Set response_model only if PublicTaskOut is available
-_public_response_model = List[PublicTaskOut] if PublicTaskOut else None
-
-@router.get("/public", response_model=_public_response_model)
-def list_public(
-    statuses: str | None = Query(default=None, description="Comma-separated status names (case-insensitive)"),
-    limit: int = Query(default=20, ge=1, le=100, description="Maximum number of tasks to return"),
-):
-    """
-    List public tasks from Notion database.
-    
-    Returns HTTP 500 if environment variables are missing.
-    Returns HTTP 502 if Notion API fails.
-    """
-    if not query_public_tasks:
-        raise HTTPException(
-            status_code=500,
-            detail="Notion integration not available (missing dependencies)"
-        )
-    
-    # Check environment variables
-    if not NOTION_API_KEY or not NOTION_PUBLIC_TASKS_DB_ID:
-        raise HTTPException(
-            status_code=500,
-            detail="Notion configuration missing (NOTION_API_KEY or NOTION_PUBLIC_TASKS_DB_ID not set)"
-        )
-    
-    # Parse statuses
-    status_list = _parse_statuses(statuses)
-    
-    # Default statuses if none provided
-    if not status_list:
-        status_list = ["In Progress", "Review"]
-    
+@router.get("/public")
+def list_public_tasks(
+    statuses: Optional[str] = Query(default=None, description="Comma-separated list of statuses (e.g., 'In Progress,Review')"),
+    limit: int = Query(default=20, ge=1, le=50, description="Max number of tasks (1..50)"),
+) -> List[dict]:
     try:
-        tasks = query_public_tasks(statuses=status_list, limit=limit)
-        return tasks
-    except ValueError as e:
-        # Missing environment variables
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        # Notion API failure
-        raise HTTPException(status_code=502, detail=f"Notion API error: {str(e)}")
+        dbid = os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "").strip()
+        if not dbid:
+            raise HTTPException(status_code=502, detail={"error": "notion_unreachable"})
+        parsed: Optional[List[str]] = None
+        if statuses and statuses.strip():
+            parsed = [s.strip() for s in statuses.split(",") if s.strip()]
+        if not parsed:
+            parsed = ["In Progress", "Review"]
+        c = _client()
+        return query_public_tasks(c, dbid, parsed, limit)
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"error": "bad_request"})
+    except Exception:
+        raise HTTPException(status_code=502, detail={"error": "notion_unreachable"})
 
 
 @router.get("/debug")
-def debug_schema() -> dict:
-    """
-    Debug endpoint to return resolved schema information (no secrets).
-    Returns property names and status values count.
-    """
-    if not resolve_schema or not _client:
-        return {
-            "error": "Notion integration not available",
-            "available": False,
-        }
-    
-    if not NOTION_API_KEY or not NOTION_PUBLIC_TASKS_DB_ID:
-        return {
-            "error": "Notion configuration missing",
-            "available": False,
-        }
-    
+def debug_tasks() -> dict:
     try:
-        client = _client()
-        schema = resolve_schema(client, NOTION_PUBLIC_TASKS_DB_ID)
+        dbid = os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "").strip()
+        if not dbid:
+            return {"titleProp": None, "publicProp": None, "statusProp": None, "statusValues": []}
+        c = _client()
+        schema = resolve_schema(c, dbid)
         return {
-            "available": True,
-            "title_prop": schema.title_prop,
-            "public_prop": schema.public_prop,
-            "status_prop": schema.status_prop,
-            "status_type": schema.status_type,
-            "status_values_count": len(schema.status_values),
-            "status_values": schema.status_values,
+            "titleProp": schema["title_prop"],
+            "publicProp": schema["public_prop"],
+            "statusProp": schema["status_prop"],
+            "statusValues": schema["status_values"],
         }
-    except ValueError as e:
-        return {
-            "error": str(e),
-            "available": False,
-        }
-    except Exception as e:
-        return {
-            "error": f"Notion API error: {str(e)}",
-            "available": False,
-        }
+    except Exception:
+        return {"titleProp": None, "publicProp": None, "statusProp": None, "statusValues": []}
