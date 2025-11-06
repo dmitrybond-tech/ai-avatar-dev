@@ -3,5 +3,5 @@ services:
     env_file:
       - .env.miniapp
     environment:
-      NOTION_TIMEOUT: ${NOTION_TIMEOUT:-10}
+      - NOTION_TIMEOUT=${NOTION_TIMEOUT:-10}
 

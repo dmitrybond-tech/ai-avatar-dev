@@ -16,7 +16,8 @@ def list_public_tasks(
     limit: int = Query(default=20, ge=1, le=50, description="Max number of tasks (1..50)"),
 ) -> List[dict]:
     try:
-        dbid = os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "").strip()
+        # Support legacy env var: NOTION_DB → NOTION_PUBLIC_TASKS_DB_ID
+        dbid = os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "").strip() or os.getenv("NOTION_DB", "").strip()
         if not dbid:
             raise HTTPException(status_code=502, detail={"error": "notion_unreachable"})
         parsed: Optional[List[str]] = None
@@ -37,7 +38,8 @@ def list_public_tasks(
 @router.get("/debug")
 def debug_tasks() -> dict:
     try:
-        dbid = os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "").strip()
+        # Support legacy env var: NOTION_DB → NOTION_PUBLIC_TASKS_DB_ID
+        dbid = os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "").strip() or os.getenv("NOTION_DB", "").strip()
         if not dbid:
             return {"titleProp": None, "publicProp": None, "statusProp": None, "statusValues": []}
         c = _client()

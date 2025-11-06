@@ -1,15 +1,11 @@
-import os
 from typing import Any, Dict, List, Literal
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-DEFAULT_LANG = os.getenv("DEFAULT_LANG", "ru")
-CAL_USERNAME = os.getenv("CAL_USERNAME", "dmitrybond")
-CAL_HOST = os.getenv("CAL_HOST", "cal.com")
-
 app = FastAPI(title="MiniApp API", version="1.0.0")
+
 # CORS left in place for local dev convenience; same-origin in prod avoids CORS usage
 allowed_origins = [
     "https://miniapp.dmitrybond.tech",
@@ -25,14 +21,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-try:
-    # Mount public tasks router under /api prefix
-    # Use relative import to survive dash/underscore copy
-    from .routers.public_tasks import router as public_tasks_router
-    app.include_router(public_tasks_router, prefix="/api")
-except Exception:
-    # Optional in dev if dependencies are missing; avoids startup crash
-    pass
+# Mount public tasks router under /api prefix
+# Use relative import to survive dash/underscore copy
+from .routers.public_tasks import router as public_tasks_router
+app.include_router(public_tasks_router, prefix="/api")
 
 
 class SkillItem(BaseModel):
@@ -120,13 +112,20 @@ async def chat_stub(m: ChatIn) -> ChatOut:
 
 @app.get("/cal/link", response_model=CalLinkResponse)
 async def cal_link() -> CalLinkResponse:
-    return CalLinkResponse(url=f"https://{CAL_HOST}/{CAL_USERNAME}/intro-30m")
+    import os
+    host = os.getenv("CAL_HOST", "cal.com")
+    username = os.getenv("CAL_USERNAME", "dmitrybond")
+    return CalLinkResponse(url=f"https://{host}/{username}/intro-30m")
 
 
 @app.get("/cal/suggest")
-async def cal_suggest(event: str = Query(default="intro-30m"), lang: str = Query(default=DEFAULT_LANG)) -> Dict[str, Any]:
-    username = os.getenv("CAL_USERNAME", CAL_USERNAME)
-    host = os.getenv("CAL_HOST", CAL_HOST)
+async def cal_suggest(event: str = Query(default="intro-30m"), lang: str = Query(default=None)) -> Dict[str, Any]:
+    import os
+    default_lang = os.getenv("DEFAULT_LANG", "ru")
+    if lang is None:
+        lang = default_lang
+    username = os.getenv("CAL_USERNAME", "dmitrybond")
+    host = os.getenv("CAL_HOST", "cal.com")
     url = f"https://{host}/{username}/{event}"
     cta = {
         "ru": "Забронировать встречу",
@@ -135,12 +134,13 @@ async def cal_suggest(event: str = Query(default="intro-30m"), lang: str = Query
     return {
         "event": event,
         "lang": lang,
-        "cta": cta.get(lang, cta[DEFAULT_LANG]),
+        "cta": cta.get(lang, cta[default_lang]),
         "url": url,
     }
 
 
 if __name__ == "__main__":
+    import os
     import uvicorn
 
     port = int(os.getenv("PORT", "8080"))

@@ -27,8 +27,8 @@ services:
     env_file:
       - .env.miniapp
     environment:
-      NOTION_TIMEOUT: ${NOTION_TIMEOUT:-10}
-      WEBSITE_ORIGIN: ${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
+      - NOTION_TIMEOUT=${NOTION_TIMEOUT:-10}
+      - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
 
   bot:
     image: ${IMAGE_BOT:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot}:${IMAGE_TAG:-main}
