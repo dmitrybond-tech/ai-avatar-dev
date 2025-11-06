@@ -46,7 +46,11 @@ def _get_notion_client():
     api_key = os.getenv("NOTION_API_KEY") or os.getenv("NOTION_SECRET")
     if not api_key:
         return None
-    return Client(auth=api_key, timeout=10)
+    try:
+        timeout_val = int(os.getenv("NOTION_TIMEOUT", "10") or "10")
+    except Exception:
+        timeout_val = 10
+    return Client(auth=api_key, timeout=timeout_val)
 
 
 def _fetch_from_notion() -> List[Dict[str, Any]]:

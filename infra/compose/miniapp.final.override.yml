@@ -1,0 +1,28 @@
+services:
+  api:
+    working_dir: /app
+    env_file:
+      - .env.miniapp
+    environment:
+      # Notion token(s)
+      NOTION_API_KEY: ${NOTION_API_KEY}
+      NOTION_SECRET: ${NOTION_SECRET:-}
+      NOTION_TIMEOUT: ${NOTION_TIMEOUT:-10}
+
+      # Skills DB
+      NOTION_DB_SKILLS: ${NOTION_DB_SKILLS}
+      # optional shared DB id fallback
+      NOTION_DB: ${NOTION_DB:-}
+
+      # Tasks DB
+      NOTION_PUBLIC_TASKS_DB_ID: ${NOTION_PUBLIC_TASKS_DB_ID:-}
+
+    command:
+      - uvicorn
+      - apps.miniapp_api.main:app
+      - --host=0.0.0.0
+      - --port=8080
+      - --proxy-headers
+      - --forwarded-allow-ips=*
+
+

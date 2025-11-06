@@ -63,3 +63,38 @@ try:
 except Exception as e:
     logging.getLogger(__name__).warning("Failed to include skills router: %s", e.__class__.__name__)
 
+# Public tasks aliases (/api/public and /public) returning same payload as /api/tasks/public
+try:
+    from fastapi import Query, HTTPException
+    from typing import List, Optional
+    import os as _os
+    from apps.miniapp_api.integrations.notion_public import _client as _notion_client, query_public_tasks as _query_public_tasks
+
+    def _parse_statuses(statuses: Optional[str]) -> Optional[List[str]]:
+        if statuses and statuses.strip():
+            parsed = [s.strip() for s in statuses.split(",") if s.strip()]
+            return parsed or None
+        return None
+
+    def _resolve_dbid() -> str:
+        dbid = (_os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "") or _os.getenv("NOTION_DB", "")).strip()
+        if not dbid:
+            raise HTTPException(status_code=502, detail={"error": "notion_unreachable"})
+        return dbid
+
+    @app.get("/api/public")
+    def api_public(statuses: Optional[str] = Query(default=None), limit: int = Query(default=20, ge=1, le=50)) -> List[dict]:
+        dbid = _resolve_dbid()
+        sts = _parse_statuses(statuses) or ["In Progress", "Review"]
+        client = _notion_client()
+        return _query_public_tasks(client, dbid, sts, limit)
+
+    @app.get("/public")
+    def public(statuses: Optional[str] = Query(default=None), limit: int = Query(default=20, ge=1, le=50)) -> List[dict]:
+        dbid = _resolve_dbid()
+        sts = _parse_statuses(statuses) or ["In Progress", "Review"]
+        client = _notion_client()
+        return _query_public_tasks(client, dbid, sts, limit)
+except Exception as e:
+    logging.getLogger(__name__).warning("Failed to register public tasks aliases: %s", e.__class__.__name__)
+
