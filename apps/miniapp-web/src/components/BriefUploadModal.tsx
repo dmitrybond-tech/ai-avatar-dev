@@ -1,6 +1,5 @@
 import React, { useRef, useState, useMemo } from "react";
 import { createI18n } from "../lib/i18n";
-import { apiUrl } from "../lib/apiBase";
 
 const i18n = createI18n();
 
@@ -67,7 +66,7 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
       if (form.message?.trim()) {
         fd.append("message", form.message.trim());
       }
-      const res = await fetch(apiUrl("/briefs/upload"), {
+      const res = await fetch("/briefs/upload", {
         method: "POST",
         body: fd,
       });

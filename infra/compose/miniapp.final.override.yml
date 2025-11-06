@@ -35,4 +35,8 @@ services:
       - --proxy-headers
       - --forwarded-allow-ips=*
 
+  web:
+    volumes:
+      - ../../apps/miniapp-web/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+
 
