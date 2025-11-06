@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from notion_client import APIResponseError
 
 # Use relative imports to survive dash/underscore copy
 from ..integrations.notion_public_tasks import (
@@ -12,6 +13,9 @@ from ..integrations.notion_public_tasks import (
     update_task,
     add_comment,
     assert_schema,
+    NOTION_PUBLIC_TASKS_DB_ID,
+    _get_status_mapping,
+    _client,
 )
 
 
@@ -51,8 +55,15 @@ def list_public_tasks(
             parsed_statuses = ["In Progress", "Review"]
         
         return query_public_tasks(limit=limit, statuses=parsed_statuses, open_only=open_only)
+    except ValueError as e:
+        # Missing configuration - return 500
+        raise HTTPException(status_code=500, detail="Notion configuration error")
+    except APIResponseError as e:
+        # Notion API error - return 502
+        raise HTTPException(status_code=502, detail="Notion query failed")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Other errors - return 502 with safe message
+        raise HTTPException(status_code=502, detail="Notion query failed")
 
 
 @router.post("/", response_model=PublicTaskOut)
@@ -86,5 +97,36 @@ def post_comment(id: str, payload: dict) -> dict:
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/debug")
+def debug_tasks() -> dict:
+    """
+    Debug endpoint to check Notion configuration and available status values.
+    Does not expose secrets.
+    """
+    try:
+        configured = bool(NOTION_PUBLIC_TASKS_DB_ID)
+        status_values = []
+        
+        if configured:
+            try:
+                c = _client()
+                is_status_type, status_mapping = _get_status_mapping(c)
+                status_values = sorted(status_mapping.values())
+            except Exception:
+                pass  # Don't fail if we can't fetch
+        
+        return {
+            "db": NOTION_PUBLIC_TASKS_DB_ID if configured else None,
+            "configured": configured,
+            "statusValues": status_values,
+        }
+    except Exception:
+        return {
+            "db": None,
+            "configured": False,
+            "statusValues": [],
+        }
 
 

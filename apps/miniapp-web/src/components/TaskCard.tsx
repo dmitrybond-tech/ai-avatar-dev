@@ -13,13 +13,36 @@ export default function TaskCard({ t }: { t: PublicTask }) {
         <p className="mt-2 text-sm text-gray-600 line-clamp-3">{t.description}</p>
       )}
       <div className="mt-3 text-xs text-gray-500">
-        {(t.scope ?? null) != null && (t.done ?? null) != null ? (
-          <span>Scope {t.done}/{t.scope}</span>
-        ) : null}
-        <span className="ml-2">Updated {new Date(t.lastUpdated).toLocaleString()}</span>
+        {((t.scope ?? null) != null || (t.done ?? null) != null) && (
+          <span>
+            {(t.scope ?? null) != null && (t.done ?? null) != null ? (
+              <>Scope {t.scope} • Done {t.done}</>
+            ) : (t.scope ?? null) != null ? (
+              <>Scope {t.scope}</>
+            ) : (
+              <>Done {t.done}</>
+            )}
+          </span>
+        )}
+        {t.lastUpdated && (
+          <span className={((t.scope ?? null) != null || (t.done ?? null) != null) ? "ml-2" : ""}>
+            Updated {new Date(t.lastUpdated).toLocaleDateString(undefined, { 
+              month: 'short', 
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </span>
+        )}
       </div>
-      <div className="mt-3 h-2 w-full rounded bg-gray-200 overflow-hidden">
-        <div style={{ width: `${pct}%` }} className="h-full rounded bg-black" />
+      <div className="mt-3">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs text-gray-600">Progress</span>
+          <span className="text-xs font-medium text-gray-700">{pct}%</span>
+        </div>
+        <div className="h-2 w-full rounded bg-gray-200 overflow-hidden">
+          <div style={{ width: `${pct}%` }} className="h-full rounded bg-black" />
+        </div>
       </div>
       {t.tags?.length ? (
         <div className="mt-3 flex flex-wrap gap-1">

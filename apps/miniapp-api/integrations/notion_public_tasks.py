@@ -240,6 +240,37 @@ def _load_db_status_type(c: Client) -> bool:
     return status_type == "status"
 
 
+def _get_status_mapping(c: Client) -> Tuple[bool, dict]:
+    """
+    Retrieve database and build case-insensitive status mapping.
+    Returns (is_status_type, mapping_dict) where mapping_dict maps normalized status names to actual DB values.
+    """
+    db = c.databases.retrieve(database_id=NOTION_PUBLIC_TASKS_DB_ID)
+    props = db.get("properties", {})
+    status_prop = props.get(PROP_STATUS, {})
+    prop_type = status_prop.get("type")
+    is_status_type = prop_type == "status"
+    
+    # Build mapping: normalized (lowercase, trimmed) -> actual status name
+    status_mapping = {}
+    if is_status_type:
+        options = status_prop.get("status", {}).get("options", [])
+        for opt in options:
+            actual_name = opt.get("name", "").strip()
+            if actual_name:
+                normalized = actual_name.strip().lower()
+                status_mapping[normalized] = actual_name
+    else:
+        options = status_prop.get("select", {}).get("options", [])
+        for opt in options:
+            actual_name = opt.get("name", "").strip()
+            if actual_name:
+                normalized = actual_name.strip().lower()
+                status_mapping[normalized] = actual_name
+    
+    return is_status_type, status_mapping
+
+
 def query_public_tasks(limit: int = 50, statuses: Optional[List[str]] = None, open_only: bool = True) -> List[PublicTaskOut]:
     """
     Query public tasks from Notion.
@@ -252,56 +283,58 @@ def query_public_tasks(limit: int = 50, statuses: Optional[List[str]] = None, op
     
     Returns:
         List of PublicTaskOut objects
+    
+    Raises:
+        ValueError: If NOTION_API_KEY or NOTION_PUBLIC_TASKS_DB_ID are missing
+        Exception: On Notion API errors
     """
     if not NOTION_PUBLIC_TASKS_DB_ID:
-        import warnings
-        warnings.warn("NOTION_PUBLIC_TASKS_DB_ID not set, returning empty list", UserWarning)
-        return []
+        raise ValueError("NOTION_PUBLIC_TASKS_DB_ID is not configured")
+    
+    if not NOTION_API_KEY:
+        raise ValueError("NOTION_API_KEY is not configured")
     
     try:
         c = _client()
-    except ValueError:
-        import warnings
-        warnings.warn("NOTION_API_KEY not set, returning empty list", UserWarning)
-        return []
+    except ValueError as e:
+        raise ValueError(f"Failed to initialize Notion client: {e}")
     
-    is_status_type = _load_db_status_type(c)
+    try:
+        is_status_type, status_mapping = _get_status_mapping(c)
+    except APIResponseError as e:
+        raise Exception(f"Notion query failed: {e}")
+    except Exception as e:
+        raise Exception(f"Failed to retrieve database schema: {e}")
     
     # Build filter: always require Public? = true
     filters = [{"property": PROP_PUBLIC, "checkbox": {"equals": True}}]
     
-    # Add status filter if statuses provided
+    # Normalize and map statuses to actual DB values
+    statuses_to_query: List[str] = []
     if statuses:
-        # Normalize status names (case-insensitive)
-        statuses_normalized = [s.strip() for s in statuses if s.strip()]
-        if statuses_normalized:
-            # Use "or" filter for multiple statuses (Notion API supports this)
-            if is_status_type:
-                status_conditions = [
-                    {"property": PROP_STATUS, "status": {"equals": s}}
-                    for s in statuses_normalized
-                ]
-            else:
-                status_conditions = [
-                    {"property": PROP_STATUS, "select": {"equals": s}}
-                    for s in statuses_normalized
-                ]
-            if len(status_conditions) == 1:
-                filters.append(status_conditions[0])
-            else:
-                filters.append({"or": status_conditions})
+        # Normalize input statuses and map to actual DB values
+        for s in statuses:
+            normalized = s.strip().lower()
+            if normalized and normalized in status_mapping:
+                statuses_to_query.append(status_mapping[normalized])
     elif open_only:
         # Default to ["In Progress", "Review"] when open_only=True and no statuses specified
-        default_statuses = ["In Progress", "Review"]
+        default_normalized = ["in progress", "review"]
+        for norm in default_normalized:
+            if norm in status_mapping:
+                statuses_to_query.append(status_mapping[norm])
+    
+    # Add status filter if we have statuses to query
+    if statuses_to_query:
         if is_status_type:
             status_conditions = [
                 {"property": PROP_STATUS, "status": {"equals": s}}
-                for s in default_statuses
+                for s in statuses_to_query
             ]
         else:
             status_conditions = [
                 {"property": PROP_STATUS, "select": {"equals": s}}
-                for s in default_statuses
+                for s in statuses_to_query
             ]
         if len(status_conditions) == 1:
             filters.append(status_conditions[0])
@@ -313,26 +346,49 @@ def query_public_tasks(limit: int = 50, statuses: Optional[List[str]] = None, op
     
     results: List[dict] = []
     has_more, cursor = True, None
-    while has_more and len(results) < limit:
-        query_params = {
-            "database_id": NOTION_PUBLIC_TASKS_DB_ID,
-            "filter": query_filter,
-            "sorts": [
-                {"property": PROP_LAST_UPDATED, "direction": "descending"},
-                {"property": PROP_REVIEW_AT, "direction": "ascending"},
-            ],
-            "page_size": min(limit - len(results), 100),
-        }
-        if cursor:
-            query_params["start_cursor"] = cursor
+    try:
+        # Try to get database to check if PROP_LAST_UPDATED exists and is sortable
+        db = c.databases.retrieve(database_id=NOTION_PUBLIC_TASKS_DB_ID)
+        props = db.get("properties", {})
+        has_last_updated = PROP_LAST_UPDATED in props
         
-        resp = c.databases.query(**query_params)
-        results.extend(resp.get("results", []))
-        has_more = resp.get("has_more", False)
-        cursor = resp.get("next_cursor")
+        while has_more and len(results) < limit:
+            query_params = {
+                "database_id": NOTION_PUBLIC_TASKS_DB_ID,
+                "filter": query_filter,
+                "page_size": min(limit - len(results), 100),
+            }
+            # Only add sort if property exists
+            if has_last_updated:
+                query_params["sorts"] = [
+                    {"property": PROP_LAST_UPDATED, "direction": "descending"},
+                ]
+            if cursor:
+                query_params["start_cursor"] = cursor
+            
+            resp = c.databases.query(**query_params)
+            results.extend(resp.get("results", []))
+            has_more = resp.get("has_more", False)
+            cursor = resp.get("next_cursor")
+        
+        # Sort by last_edited_time if PROP_LAST_UPDATED wasn't available
+        if not has_last_updated:
+            results.sort(key=lambda p: p.get("last_edited_time", ""), reverse=True)
+    except APIResponseError as e:
+        raise Exception(f"Notion query failed: {e}")
+    except Exception as e:
+        raise Exception(f"Failed to query Notion database: {e}")
     
     # Convert pages to PublicTaskOut, extracting descriptions
-    tasks = [_page_to_out(p, is_status_type, client=c) for p in results[:limit]]
+    tasks = []
+    for p in results[:limit]:
+        try:
+            tasks.append(_page_to_out(p, is_status_type, client=c))
+        except Exception as e:
+            # Log but continue processing other tasks
+            import logging
+            logging.warning(f"Failed to convert page {p.get('id', 'unknown')}: {e}")
+            continue
     
     # Apply additional client-side filtering for open_only
     if open_only:
@@ -341,7 +397,7 @@ def query_public_tasks(limit: int = 50, statuses: Optional[List[str]] = None, op
             if t.status not in {"Done", "Closed"} and t.progressPct < 100
         ]
     
-    # Case-insensitive status filtering if statuses were provided
+    # Final case-insensitive status filtering if statuses were provided (double-check)
     if statuses:
         statuses_normalized = [s.strip().lower() for s in statuses if s.strip()]
         tasks = [t for t in tasks if t.status.strip().lower() in statuses_normalized]
