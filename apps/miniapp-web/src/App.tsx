@@ -4,6 +4,7 @@ import { SkillsList } from './components/Skills'
 import { TasksModal } from './components/TasksModal'
 import { ChatBox } from './components/Chat'
 import { SkillDetailView } from './components/SkillDetail'
+import { BriefFormPage } from './pages/BriefFormPage'
 import { createI18n, detectLocale } from './lib/i18n'
 import { safeInitTelegram } from './lib/telegram'
 import { clientLog } from './lib/clientLog'
@@ -12,9 +13,10 @@ function useQuery() {
   return useMemo(() => new URLSearchParams(window.location.search), [])
 }
 
-type Route = { name: 'home' } | { name: 'skills-list' } | { name: 'skill-detail', slug: string }
+type Route = { name: 'home' } | { name: 'skills-list' } | { name: 'skill-detail', slug: string } | { name: 'brief' }
 
 function parseRoute(pathname: string): Route {
+  if (pathname === '/brief') return { name: 'brief' }
   if (pathname === '/skills') return { name: 'skills-list' }
   const m = pathname.match(/^\/skills\/([a-z0-9\-]+)$/)
   if (m) return { name: 'skill-detail', slug: m[1] }
@@ -38,6 +40,11 @@ export function App() {
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
+
+  // Standalone brief page - render without wrapper
+  if (route.name === 'brief') {
+    return <BriefFormPage />
+  }
 
   return (
     <div className="min-h-dvh w-full bg-white text-black">

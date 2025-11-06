@@ -54,7 +54,13 @@ app = FastAPI(
 )
 
 # CORS middleware
-cors_origins = [settings.website_origin, "https://web.telegram.org"]
+cors_origins = [
+    settings.website_origin,
+    "https://web.telegram.org",
+    "https://miniapp.dmitrybond.tech",
+    "https://dmitrybond.tech",
+    "https://cv.dmitrybond.tech",
+]
 
 # Optional: Allow dev CORS (set ALLOW_DEV_CORS=1 for local development)
 import os
