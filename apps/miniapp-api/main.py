@@ -24,14 +24,10 @@ app.add_middleware(
 # Mount public tasks router under /api prefix
 # Use relative import to survive dash/underscore copy
 from .routers.public_tasks import router as public_tasks_router
-from .routers.skills import router as skills_router, alias_router as rules_alias_router
+from .routers.skills import router as skills_router
 app.include_router(public_tasks_router, prefix="/api")
 app.include_router(skills_router)
-app.include_router(rules_alias_router)
-
-
-class RulesResponse(BaseModel):
-    items: List[dict] = Field(default_factory=list)
+app.include_router(skills_router, prefix="/api")
 
 
 class TaskItem(BaseModel):
@@ -58,8 +54,8 @@ class CalLinkResponse(BaseModel):
 
 
 @app.get("/healthz")
-async def healthz() -> Dict[str, str]:
-    return {"status": "ok"}
+async def healthz() -> Dict[str, bool]:
+    return {"ok": True}
 
 
 @app.get("/healthz/revision")
@@ -75,11 +71,7 @@ def health() -> Dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/rules", response_model=RulesResponse)
-async def get_rules(lang: str | None = Query(default=None)) -> RulesResponse:
-    # Backward-compatible alias to /skills
-    from .routers.skills import list_skills
-    return RulesResponse(items=list_skills(lang=lang))
+ 
 
 
 @app.get("/tasks/status", response_model=TasksStatusResponse)

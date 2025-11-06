@@ -27,9 +27,9 @@ def test_detail_skill_ok():
     assert isinstance(data.get("bullets_en", []), list)
 
 
-def test_alias_rules_ok():
+def test_api_skills_ok():
     c = get_client()
-    r = c.get("/rules")
+    r = c.get("/api/skills")
     assert r.status_code == 200
     data = r.json()
     assert isinstance(data, list)
