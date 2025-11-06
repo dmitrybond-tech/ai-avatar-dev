@@ -20,9 +20,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     logger.info("Starting API server...")
-    # Sanity-check presence of Notion env vars without logging secrets
+    # Sanity-check presence of Notion and Telegram env vars without logging secrets
     import os as _os
-    for k in ("NOTION_API_KEY", "NOTION_PUBLIC_TASKS_DB_ID"):
+    for k in ("NOTION_API_KEY", "NOTION_PUBLIC_TASKS_DB_ID", "TELEGRAM_BOT_TOKEN", "TELEGRAM_ADMIN_CHAT_ID"):
         logger.info("%s present=%s", k, bool(_os.getenv(k)))
     await init_db()
     
