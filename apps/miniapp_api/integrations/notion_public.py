@@ -7,14 +7,14 @@ from typing import List, Optional
 from notion_client import Client
 
 
-NOTION_API_KEY = os.getenv("NOTION_API_KEY", "").strip()
 NOTION_TIMEOUT = int(os.getenv("NOTION_TIMEOUT", "10"))
 
 
 def _client() -> Client:
-    if not NOTION_API_KEY:
+    api_key = (os.getenv("NOTION_API_KEY", "") or os.getenv("NOTION_SECRET", "")).strip()
+    if not api_key:
         raise ValueError("NOTION_API_KEY is not set")
-    return Client(auth=NOTION_API_KEY, timeout_ms=NOTION_TIMEOUT * 1000)
+    return Client(auth=api_key, timeout_ms=NOTION_TIMEOUT * 1000)
 
 
 def resolve_schema(client: Client, dbid: str) -> dict:

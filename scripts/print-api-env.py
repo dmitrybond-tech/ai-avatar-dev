@@ -1,3 +1,27 @@
+#!/usr/bin/env python3
+import os
+
+
+def mask(value: str) -> str:
+    if value is None:
+        return "<none>"
+    v = str(value)
+    if not v:
+        return "<empty>"
+    return f"len={len(v)} first=*** last=***"
+
+
+def main() -> None:
+    print("API env (masked):")
+    print(f"NOTION_API_KEY: {mask(os.getenv('NOTION_API_KEY'))}")
+    print(f"NOTION_SECRET:  {mask(os.getenv('NOTION_SECRET'))}")
+    print(f"NOTION_PUBLIC_TASKS_DB_ID: {mask(os.getenv('NOTION_PUBLIC_TASKS_DB_ID'))}")
+    print(f"NOTION_DB: {mask(os.getenv('NOTION_DB'))}")
+
+
+if __name__ == "__main__":
+    main()
+
 import os
 
 
