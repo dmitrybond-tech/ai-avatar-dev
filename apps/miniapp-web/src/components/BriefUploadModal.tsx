@@ -7,6 +7,31 @@ const i18n = createI18n();
 const ACCEPT = "image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,application/zip,application/x-zip-compressed";
 const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
+class ModalErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error) {
+    // Keep it minimal; show inline error instead of blank overlay
+    // eslint-disable-next-line no-console
+    console.error("BriefUploadModal render error:", error);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-4 text-sm text-red-700 bg-red-50 rounded-md border border-red-200">
+          {String(this.state.error.message || this.state.error)}
+        </div>
+      );
+    }
+    return this.props.children as any;
+  }
+}
+
 export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -14,6 +39,9 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
   const [file, setFile] = useState<File | null>(null);
 
   if (!open) return null;
+  // Dev-safe visibility probe to help diagnose blank overlays
+  // eslint-disable-next-line no-console
+  console.debug("BriefUploadModal open=true reached render path");
 
   const phoneSanitized = useMemo(() => form.phone.replace(/[^\d+]/g, ""), [form.phone]);
   const emailValid = emailRx.test(form.email);
@@ -64,11 +92,12 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]" onClick={onClose}>
       <div className="form-dark bg-white dark:bg-zinc-900 rounded-2xl p-4 w-[92%] max-w-md" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold mb-3 dark:text-white">{i18n.t("brief.title")}</h2>
+        <ModalErrorBoundary>
+          <h2 className="text-lg font-semibold mb-3 dark:text-white">{i18n.t("brief.title")}</h2>
 
-        <div className="space-y-3">
+          <div className="space-y-3">
           <label className="block">
             <span className="form-label block mb-1">{i18n.get()==="ru" ? "Имя" : "Name"}</span>
             <input
@@ -141,20 +170,21 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
                 : "Supported: images, PDF, DOC/DOCX, TXT, ZIP"}
             </p>
           </label>
-        </div>
+          </div>
 
-        <div className="flex gap-2 justify-end mt-4">
-          <button className="px-3 py-1 rounded-md border dark:text-white" onClick={onClose} disabled={busy}>
-            {i18n.t("brief.cancel")}
-          </button>
-          <button
-            disabled={!isReady}
-            className="px-3 py-1 rounded-md border bg-black text-white disabled:opacity-50"
-            onClick={submit}
-          >
-            {i18n.t("brief.send")}
-          </button>
-        </div>
+          <div className="flex gap-2 justify-end mt-4">
+            <button className="px-3 py-1 rounded-md border dark:text-white" onClick={onClose} disabled={busy}>
+              {i18n.t("brief.cancel")}
+            </button>
+            <button
+              disabled={!isReady}
+              className="px-3 py-1 rounded-md border bg-black text-white disabled:opacity-50"
+              onClick={submit}
+            >
+              {i18n.t("brief.send")}
+            </button>
+          </div>
+        </ModalErrorBoundary>
       </div>
     </div>
   );
