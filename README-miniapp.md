@@ -48,6 +48,7 @@ Notes:
 - WebApp calls API via the same domain (`VITE_API_BASE_URL`), CORS is open for dev
 - Deterministic flows only, no RASA/LLM calls
  - Caddy proxies `miniapp.dmitrybond.tech` → `localhost:5173` (web) and `localhost:8080` (api)
+ - API now mounts `skills` router at both flat paths and under `/api` from `apps.miniapp_api.main`, and the container starts via `uvicorn apps.miniapp_api.main:app`.
 # Telegram Mini App — Rule-Based Personal Assistant (RU/EN)
 
 This mini app is a deterministic, rule-based assistant that:

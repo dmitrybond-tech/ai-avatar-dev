@@ -1,10 +1,11 @@
 import os
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
+from fastapi.routing import APIRoute
 from fastapi.middleware.cors import CORSMiddleware
 
 
-app = FastAPI(title="MiniApp API", version="1.0.0")
+app = FastAPI(title="Miniapp API", version="1.0.0")
 
 logger = logging.getLogger("miniapp_api")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -33,7 +34,7 @@ except Exception as e:
 
 @app.get("/healthz")
 async def healthz() -> dict:
-    return {"status": "ok"}
+    return {"ok": True}
 
 
 @app.get("/healthz/revision")
@@ -45,8 +46,20 @@ def healthz_revision() -> dict:
 @app.on_event("startup")
 async def log_routes() -> None:
     try:
-        route_paths = sorted({getattr(r, "path", "") for r in app.router.routes if getattr(r, "path", None)})
-        logger.info("Registered routes: %s", ", ".join(route_paths))
+        route_paths = sorted([r.path for r in app.routes if isinstance(r, APIRoute)])
+        logger.info("Registered routes (miniapp_api): %s", route_paths)
     except Exception as e:
         logger.debug("Failed to list routes: %s", e.__class__.__name__)
+
+# /api prefix and flat paths for compatibility
+try:
+    from apps.miniapp_api.routers import skills as skills_router
+
+    api = APIRouter(prefix="/api")
+    api.include_router(skills_router.router, tags=["skills"]) 
+    app.include_router(api)
+
+    app.include_router(skills_router.router, tags=["skills-compat"]) 
+except Exception as e:
+    logging.getLogger(__name__).warning("Failed to include skills router: %s", e.__class__.__name__)
 

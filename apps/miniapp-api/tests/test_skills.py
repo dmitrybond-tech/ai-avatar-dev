@@ -24,7 +24,7 @@ def test_detail_skill_ok():
     assert r.status_code == 200
     data = r.json()
     assert data["slug"] == "automation"
-    assert isinstance(data.get("bullets_en", []), list)
+    assert isinstance(data.get("bullets", []), list)
 
 
 def test_api_skills_ok():
@@ -34,5 +34,19 @@ def test_api_skills_ok():
     data = r.json()
     assert isinstance(data, list)
     assert len(data) > 0
+
+
+def test_openapi_includes_skills_paths():
+    c = get_client()
+    r = c.get("/openapi.json")
+    assert r.status_code == 200
+    paths = r.json().get("paths", {})
+    for p in [
+        "/skills",
+        "/skills/{slug}",
+        "/api/skills",
+        "/api/skills/{slug}",
+    ]:
+        assert p in paths
 
 
