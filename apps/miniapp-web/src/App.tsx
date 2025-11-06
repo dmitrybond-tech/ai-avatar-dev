@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react'
 import { PrimaryActions } from './components/Buttons'
 import { SkillsList } from './components/Skills'
-import { TasksList } from './components/Tasks'
-import TasksBoard from './components/TasksBoard'
+import { TasksModal } from './components/TasksModal'
 import { ChatBox } from './components/Chat'
 
 function useQuery() {
@@ -11,20 +10,26 @@ function useQuery() {
 
 export function App() {
   const _q = useQuery() // reserved for future
-  const [view, setView] = useState<'home'|'skills'|'tasks'>('home')
+  const [view, setView] = useState<'home'|'skills'>('home')
+  const [isTasksOpen, setIsTasksOpen] = useState(false)
 
   return (
     <div className="min-h-dvh w-full bg-white text-black">
       <div className="max-w-md mx-auto p-4 grid gap-4">
         <header className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-gray-200" />
-          <div className="font-semibold">Дима’s Assistant</div>
+          <img
+            src="/icons/android-chrome-192x192.png"
+            alt="Dmitry"
+            className="h-10 w-10 rounded-full object-cover"
+            loading="eager"
+            decoding="async"
+          />
+          <div className="font-semibold">Dmitry's Assistant</div>
         </header>
         {view === 'home' && (
           <>
-            <PrimaryActions onSkills={()=>setView('skills')} onTasks={()=>setView('tasks')} />
+            <PrimaryActions onSkills={()=>setView('skills')} onTasks={()=>setIsTasksOpen(true)} />
             <ChatBox />
-            <TasksBoard />
           </>
         )}
         {view === 'skills' && (
@@ -33,13 +38,8 @@ export function App() {
             <SkillsList />
           </>
         )}
-        {view === 'tasks' && (
-          <>
-            <button className="text-sm" onClick={()=>setView('home')}>← Back</button>
-            <TasksList />
-          </>
-        )}
       </div>
+      <TasksModal isOpen={isTasksOpen} onClose={() => setIsTasksOpen(false)} />
     </div>
   )
 }

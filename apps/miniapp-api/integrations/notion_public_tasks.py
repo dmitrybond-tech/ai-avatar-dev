@@ -159,7 +159,7 @@ def _load_db_status_type(c: Client) -> bool:
     return is_status_type
 
 
-def query_public_tasks(limit: int = 100) -> List[PublicTaskOut]:
+def query_public_tasks(limit: int = 100, open_only: bool = True) -> List[PublicTaskOut]:
     if not NOTION_PUBLIC_TASKS_DB_ID:
         return []
     c = _client()
@@ -188,7 +188,16 @@ def query_public_tasks(limit: int = 100) -> List[PublicTaskOut]:
         results.extend(resp.get("results", []))
         has_more = resp.get("has_more", False)
         cursor = resp.get("next_cursor")
-    return [_page_to_out(p, is_status_type) for p in results[:limit]]
+    tasks = [_page_to_out(p, is_status_type) for p in results[:limit]]
+    
+    # Filter out completed tasks if open_only is True
+    if open_only:
+        tasks = [
+            t for t in tasks
+            if t.status not in {"Done", "Closed"} and t.progressPct < 100
+        ]
+    
+    return tasks
 
 
 def create_task(data: PublicTaskCreate) -> PublicTaskOut:

@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 # Use relative imports to survive dash/underscore copy
 from ..integrations.notion_public_tasks import (
@@ -29,9 +29,9 @@ def _startup_check() -> None:
 
 
 @router.get("/public", response_model=List[PublicTaskOut])
-def list_public_tasks() -> List[PublicTaskOut]:
+def list_public_tasks(open_only: bool = Query(default=True)) -> List[PublicTaskOut]:
     try:
-        return query_public_tasks(limit=100)
+        return query_public_tasks(limit=100, open_only=open_only)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

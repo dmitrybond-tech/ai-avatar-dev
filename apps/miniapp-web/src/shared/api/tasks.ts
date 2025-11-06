@@ -11,4 +11,10 @@ export async function fetchPublicTasks(): Promise<PublicTask[]> {
   return r.json();
 }
 
+export async function fetchOpenTasks(): Promise<PublicTask[]> {
+  const r = await fetch(`${API}/api/tasks/public?open_only=1`, { credentials: "omit" });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
 
