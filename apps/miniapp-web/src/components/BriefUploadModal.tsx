@@ -10,7 +10,7 @@ const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ name: "", company: "", phone: "", email: "" });
+  const [form, setForm] = useState({ name: "", company: "", phone: "", email: "", message: "" });
   const [file, setFile] = useState<File | null>(null);
 
   if (!open) return null;
@@ -36,6 +36,9 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
       fd.append("company", form.company.trim());
       fd.append("phone", phoneSanitized);
       fd.append("email", form.email.trim());
+      if (form.message?.trim()) {
+        fd.append("message", form.message.trim());
+      }
       const res = await fetch(apiUrl("/briefs/upload"), {
         method: "POST",
         body: fd,
@@ -109,6 +112,17 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
               inputMode="email"
             />
             {!emailValid && form.email && <p className="hint error mt-1 text-sm">{i18n.get()==="ru" ? "Проверьте email" : "Check email"}</p>}
+          </label>
+
+          <label className="block">
+            <span className="form-label block mb-1">{i18n.get()==="ru" ? "Комментарий (необязательно)" : "Comment (optional)"}</span>
+            <textarea
+              className="w-full rounded-md border px-3 py-2 bg-white dark:bg-zinc-800 dark:border-zinc-700 dark:text-white placeholder-white/70"
+              rows={3}
+              value={form.message}
+              onChange={(e) => setForm({ ...form, message: e.target.value })}
+              placeholder={i18n.get()==="ru" ? "Коротко о задаче..." : "Short description..."}
+            />
           </label>
 
           <label className="block">

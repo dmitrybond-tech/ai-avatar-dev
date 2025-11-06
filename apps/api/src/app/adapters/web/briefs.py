@@ -3,6 +3,7 @@ import os
 import time
 import pathlib
 import re
+import html
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 import httpx
@@ -41,6 +42,7 @@ async def upload_brief(
     company: str = Form(...),
     phone: str = Form(...),
     email: str = Form(...),
+    message: str | None = Form(None),
 ):
     """Upload a brief file, save it, and forward digest + file to Telegram admin."""
     name = (name or "").strip()
@@ -84,13 +86,19 @@ async def upload_brief(
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 # 1) Send digest message
+                message_text = ""
+                if message and message.strip():
+                    # HTML escape the message for safety
+                    message_escaped = html.escape(message.strip())
+                    message_text = f"<b>Comment:</b> {message_escaped}\n"
                 text = (
                     f"<b>New brief</b> ({(locale or 'en').upper()})\n"
                     f"<b>Name:</b> {name}\n"
                     f"<b>Company:</b> {company}\n"
                     f"<b>Phone:</b> {phone}\n"
                     f"<b>Email:</b> {email}\n"
-                    f"<b>File:</b> {safe} ({round(size/1024/1024, 2)} MB)"
+                    + message_text
+                    + f"<b>File:</b> {safe} ({round(size/1024/1024, 2)} MB)"
                 )
                 sm_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
                 _sm = await client.post(sm_url, data={"chat_id": ADMIN_CHAT, "text": text, "parse_mode": "HTML"})
