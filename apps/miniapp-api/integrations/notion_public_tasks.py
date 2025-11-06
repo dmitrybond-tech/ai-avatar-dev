@@ -26,6 +26,7 @@ PROP_REVIEW_AT = "Review At"
 PROP_LAST_UPDATED = "Last Updated"
 PROP_TAGS = "Tags"
 PROP_SOURCE = "Source"
+PROP_DESCRIPTION = "Description"
 
 
 def _client() -> Client:
@@ -38,10 +39,13 @@ class PublicTaskOut(BaseModel):
     id: str
     title: str
     status: str
+    scope: Optional[int] = None
+    done: Optional[int] = None
     progressPct: int = Field(ge=0, le=100)
+    description: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
     reviewAt: Optional[str] = None
     lastUpdated: str
-    tags: List[str] = Field(default_factory=list)
     url: str
 
 
@@ -63,19 +67,27 @@ class PublicTaskUpdate(BaseModel):
     tags: Optional[List[str]] = None
 
 
-def compute_progress(scope: Optional[int], done: Optional[int]) -> int:
-    s = max(int(scope or 0), 0)
-    d = max(int(done or 0), 0)
-    return 0 if s == 0 else min(100, round(100 * d / s))
+def compute_progress(scope: Optional[int], done: Optional[int], fallback_pct: Optional[int] = None) -> int:
+    """Compute progress percentage from scope/done, with fallback to Progress % property."""
+    if scope is not None and done is not None:
+        s = max(int(scope or 0), 0)
+        d = max(int(done or 0), 0)
+        if s > 0:
+            return min(100, round(100 * d / s))
+    if fallback_pct is not None:
+        return max(0, min(100, int(fallback_pct)))
+    return 0
 
 
-def _status_property_name_and_type(db_props: dict) -> Tuple[bool, str]:
-    # Return (is_status_type, property_type_str)
-    prop = db_props.get(PROP_STATUS)
+def get_status_property(props: dict) -> Optional[str]:
+    """Return status property type: 'status', 'select', or None."""
+    prop = props.get(PROP_STATUS)
     if not prop:
-        return True, "status"  # default
-    t = prop.get("type")
-    return (t == "status", t or "status")
+        return None
+    prop_type = prop.get("type")
+    if prop_type in ("status", "select"):
+        return prop_type
+    return None
 
 
 def set_status_property(status_name: Optional[str], is_status_type: bool) -> dict:
@@ -83,6 +95,64 @@ def set_status_property(status_name: Optional[str], is_status_type: bool) -> dic
         return {}
     return {PROP_STATUS: {"status": {"name": status_name}}} if is_status_type 
            else {PROP_STATUS: {"select": {"name": status_name}}}
+
+
+def page_url(page_id: str) -> str:
+    """Generate Notion page URL from page_id."""
+    if not page_id:
+        return ""
+    return f"https://notion.so/{page_id.replace('-', '')}"
+
+
+def extract_description(page_id: str, client: Client) -> Optional[str]:
+    """
+    Extract description from Notion page.
+    First tries Description property (rich_text), then fetches blocks.
+    Returns first 240 chars of plain text, stripped of newlines/markdown.
+    """
+    try:
+        # First, try Description property if it exists
+        page = client.pages.retrieve(page_id=page_id)
+        props = page.get("properties", {})
+        desc_prop = props.get(PROP_DESCRIPTION)
+        if desc_prop and desc_prop.get("type") == "rich_text":
+            rich_text = desc_prop.get("rich_text", [])
+            if rich_text:
+                text_parts = []
+                for rt in rich_text:
+                    plain = rt.get("plain_text", "")
+                    if plain:
+                        text_parts.append(plain)
+                if text_parts:
+                    desc = " ".join(text_parts)
+                    # Strip newlines and limit to 240 chars
+                    desc = desc.replace("\n", " ").replace("\r", " ").strip()
+                    return desc[:240] if desc else None
+        
+        # Fallback: fetch blocks and extract from first paragraph/list
+        blocks = client.blocks.children.list(block_id=page_id, page_size=30)
+        for block in blocks.get("results", []):
+            block_type = block.get("type")
+            if block_type == "paragraph":
+                rich_text = block.get("paragraph", {}).get("rich_text", [])
+                text_parts = [rt.get("plain_text", "") for rt in rich_text if rt.get("plain_text")]
+                if text_parts:
+                    desc = " ".join(text_parts)
+                    desc = desc.replace("\n", " ").replace("\r", " ").strip()
+                    if desc:
+                        return desc[:240]
+            elif block_type == "bulleted_list_item":
+                rich_text = block.get("bulleted_list_item", {}).get("rich_text", [])
+                text_parts = [rt.get("plain_text", "") for rt in rich_text if rt.get("plain_text")]
+                if text_parts:
+                    desc = " ".join(text_parts)
+                    desc = desc.replace("\n", " ").replace("\r", " ").strip()
+                    if desc:
+                        return desc[:240]
+    except Exception:
+        # Fail silently if description extraction fails
+        pass
+    return None
 
 
 def assert_schema() -> None:
@@ -127,7 +197,7 @@ def assert_schema() -> None:
         warnings.warn(f"Notion schema check failed: {e}", UserWarning)
 
 
-def _page_to_out(page: dict, is_status_type: bool) -> PublicTaskOut:
+def _page_to_out(page: dict, is_status_type: bool, client: Optional[Client] = None) -> PublicTaskOut:
     props = page.get("properties", {})
     title_arr = props.get(PROP_TITLE, {}).get("title", [])
     title = "".join(rt.get("plain_text", "") for rt in title_arr)
@@ -138,64 +208,143 @@ def _page_to_out(page: dict, is_status_type: bool) -> PublicTaskOut:
         status = (status_prop.get("select") or {}).get("name") or "Backlog"
     scope = props.get(PROP_SCOPE, {}).get("number")
     done = props.get(PROP_DONE, {}).get("number")
+    progress_pct_prop = props.get(PROP_PROGRESS_PCT, {}).get("number")
     review_at = (props.get(PROP_REVIEW_AT, {}).get("date") or {}).get("start")
     tags = [x.get("name") for x in (props.get(PROP_TAGS, {}).get("multi_select") or []) if x.get("name")]
     page_id = page.get("id", "")
+    
+    # Extract description if client provided
+    description = None
+    if client:
+        description = extract_description(page_id, client)
+    
     return PublicTaskOut(
         id=page_id,
         title=title,
         status=status or "Backlog",
-        progressPct=compute_progress(scope, done),
+        scope=scope,
+        done=done,
+        progressPct=compute_progress(scope, done, fallback_pct=progress_pct_prop),
+        description=description,
         reviewAt=review_at,
         lastUpdated=page.get("last_edited_time", ""),
         tags=tags,
-        url=f"https://notion.so/{page_id.replace('-', '')}" if page_id else "",
+        url=page_url(page_id),
     )
 
 
 def _load_db_status_type(c: Client) -> bool:
+    """Determine if Status property is 'status' type (True) or 'select' type (False)."""
     db = c.databases.retrieve(database_id=NOTION_PUBLIC_TASKS_DB_ID)
-    is_status_type, _ = _status_property_name_and_type(db.get("properties", {}))
-    return is_status_type
+    status_type = get_status_property(db.get("properties", {}))
+    return status_type == "status"
 
 
-def query_public_tasks(limit: int = 100, open_only: bool = True) -> List[PublicTaskOut]:
+def query_public_tasks(limit: int = 50, statuses: Optional[List[str]] = None, open_only: bool = True) -> List[PublicTaskOut]:
+    """
+    Query public tasks from Notion.
+    
+    Args:
+        limit: Maximum number of tasks to return
+        statuses: List of status names to filter by (case-insensitive). If None and open_only=True,
+                  defaults to ["In Progress", "Review"]
+        open_only: If True, exclude Done/Closed and items with progressPct >= 100
+    
+    Returns:
+        List of PublicTaskOut objects
+    """
     if not NOTION_PUBLIC_TASKS_DB_ID:
+        import warnings
+        warnings.warn("NOTION_PUBLIC_TASKS_DB_ID not set, returning empty list", UserWarning)
         return []
-    c = _client()
+    
+    try:
+        c = _client()
+    except ValueError:
+        import warnings
+        warnings.warn("NOTION_API_KEY not set, returning empty list", UserWarning)
+        return []
+    
     is_status_type = _load_db_status_type(c)
+    
+    # Build filter: always require Public? = true
+    filters = [{"property": PROP_PUBLIC, "checkbox": {"equals": True}}]
+    
+    # Add status filter if statuses provided
+    if statuses:
+        # Normalize status names (case-insensitive)
+        statuses_normalized = [s.strip() for s in statuses if s.strip()]
+        if statuses_normalized:
+            # Use "or" filter for multiple statuses (Notion API supports this)
+            if is_status_type:
+                status_conditions = [
+                    {"property": PROP_STATUS, "status": {"equals": s}}
+                    for s in statuses_normalized
+                ]
+            else:
+                status_conditions = [
+                    {"property": PROP_STATUS, "select": {"equals": s}}
+                    for s in statuses_normalized
+                ]
+            if len(status_conditions) == 1:
+                filters.append(status_conditions[0])
+            else:
+                filters.append({"or": status_conditions})
+    elif open_only:
+        # Default to ["In Progress", "Review"] when open_only=True and no statuses specified
+        default_statuses = ["In Progress", "Review"]
+        if is_status_type:
+            status_conditions = [
+                {"property": PROP_STATUS, "status": {"equals": s}}
+                for s in default_statuses
+            ]
+        else:
+            status_conditions = [
+                {"property": PROP_STATUS, "select": {"equals": s}}
+                for s in default_statuses
+            ]
+        if len(status_conditions) == 1:
+            filters.append(status_conditions[0])
+        else:
+            filters.append({"or": status_conditions})
+    
+    # Combine filters with AND
+    query_filter = {"and": filters} if len(filters) > 1 else filters[0]
+    
     results: List[dict] = []
     has_more, cursor = True, None
     while has_more and len(results) < limit:
-        resp = c.databases.query(
-            database_id=NOTION_PUBLIC_TASKS_DB_ID,
-            filter={"property": PROP_PUBLIC, "checkbox": {"equals": True}},
-            sorts=[
+        query_params = {
+            "database_id": NOTION_PUBLIC_TASKS_DB_ID,
+            "filter": query_filter,
+            "sorts": [
                 {"property": PROP_LAST_UPDATED, "direction": "descending"},
                 {"property": PROP_REVIEW_AT, "direction": "ascending"},
             ],
-            page_size=min(limit, 100),
-            start_cursor=cursor,
-        ) if cursor else c.databases.query(
-            database_id=NOTION_PUBLIC_TASKS_DB_ID,
-            filter={"property": PROP_PUBLIC, "checkbox": {"equals": True}},
-            sorts=[
-                {"property": PROP_LAST_UPDATED, "direction": "descending"},
-                {"property": PROP_REVIEW_AT, "direction": "ascending"},
-            ],
-            page_size=min(limit, 100),
-        )
+            "page_size": min(limit - len(results), 100),
+        }
+        if cursor:
+            query_params["start_cursor"] = cursor
+        
+        resp = c.databases.query(**query_params)
         results.extend(resp.get("results", []))
         has_more = resp.get("has_more", False)
         cursor = resp.get("next_cursor")
-    tasks = [_page_to_out(p, is_status_type) for p in results[:limit]]
     
-    # Filter out completed tasks if open_only is True
+    # Convert pages to PublicTaskOut, extracting descriptions
+    tasks = [_page_to_out(p, is_status_type, client=c) for p in results[:limit]]
+    
+    # Apply additional client-side filtering for open_only
     if open_only:
         tasks = [
             t for t in tasks
             if t.status not in {"Done", "Closed"} and t.progressPct < 100
         ]
+    
+    # Case-insensitive status filtering if statuses were provided
+    if statuses:
+        statuses_normalized = [s.strip().lower() for s in statuses if s.strip()]
+        tasks = [t for t in tasks if t.status.strip().lower() in statuses_normalized]
     
     return tasks
 
@@ -223,7 +372,7 @@ def create_task(data: PublicTaskCreate) -> PublicTaskOut:
     if data.tags:
         props[PROP_TAGS] = {"multi_select": [{"name": t} for t in data.tags]}
     page = c.pages.create(parent={"database_id": NOTION_PUBLIC_TASKS_DB_ID}, properties=props)
-    return _page_to_out(page, is_status_type)
+    return _page_to_out(page, is_status_type, client=c)
 
 
 def update_task(page_id: str, data: PublicTaskUpdate) -> PublicTaskOut:
@@ -249,9 +398,9 @@ def update_task(page_id: str, data: PublicTaskUpdate) -> PublicTaskOut:
         props[PROP_TAGS] = {"multi_select": [{"name": t} for t in data.tags]}
     if not props:
         page = c.pages.retrieve(page_id)
-        return _page_to_out(page, is_status_type)
+        return _page_to_out(page, is_status_type, client=c)
     page = c.pages.update(page_id, properties=props)
-    return _page_to_out(page, is_status_type)
+    return _page_to_out(page, is_status_type, client=c)
 
 
 def add_comment(page_id: str, text: str) -> None:

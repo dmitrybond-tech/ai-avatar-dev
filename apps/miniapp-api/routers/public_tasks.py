@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -29,9 +29,28 @@ def _startup_check() -> None:
 
 
 @router.get("/public", response_model=List[PublicTaskOut])
-def list_public_tasks(open_only: bool = Query(default=True)) -> List[PublicTaskOut]:
+def list_public_tasks(
+    statuses: Optional[str] = Query(default=None, description="Comma-separated list of status names (e.g., 'In Progress,Review')"),
+    open_only: bool = Query(default=True, description="Exclude Done/Closed and items with progressPct >= 100"),
+    limit: int = Query(default=20, ge=1, le=100, description="Maximum number of tasks to return")
+) -> List[PublicTaskOut]:
+    """
+    List public tasks from Notion.
+    Default filter: Public? = true and Status in {In Progress, Review} (or progressPct < 100 if no status match).
+    """
     try:
-        return query_public_tasks(limit=100, open_only=open_only)
+        # Parse statuses CSV if provided
+        parsed_statuses = None
+        if statuses:
+            parsed_statuses = [s.strip() for s in statuses.split(",") if s.strip()]
+            if not parsed_statuses:
+                parsed_statuses = None
+        
+        # Default statuses when open_only=True and no statuses specified
+        if open_only and parsed_statuses is None:
+            parsed_statuses = ["In Progress", "Review"]
+        
+        return query_public_tasks(limit=limit, statuses=parsed_statuses, open_only=open_only)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
