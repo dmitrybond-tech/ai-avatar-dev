@@ -29,9 +29,28 @@ def _sanitize_name(name: str) -> str:
     return name[:150] or "file"
 
 
+def _is_email(v: str) -> bool:
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v or "", re.I))
+
+
 @router.post("/upload")
-async def upload_brief(file: UploadFile = File(...), locale: str = Form(None)):
-    """Upload a brief file and forward it to Telegram admin."""
+async def upload_brief(
+    file: UploadFile = File(...),
+    locale: str = Form(None),
+    name: str = Form(...),
+    company: str = Form(...),
+    phone: str = Form(...),
+    email: str = Form(...),
+):
+    """Upload a brief file, save it, and forward digest + file to Telegram admin."""
+    name = (name or "").strip()
+    company = (company or "").strip()
+    phone = re.sub(r"[^\d\+]", "", phone or "")
+    email = (email or "").strip()
+    if not (name and company and phone and email):
+        raise HTTPException(status_code=422, detail="All fields are required")
+    if not _is_email(email):
+        raise HTTPException(status_code=422, detail="Invalid email")
     # Check file extension
     ext = (pathlib.Path(file.filename or "").suffix or "").lstrip(".").lower()
     if ext not in ALLOWED:
@@ -59,21 +78,36 @@ async def upload_brief(file: UploadFile = File(...), locale: str = Form(None)):
     finally:
         await file.close()
 
-    # Forward to Telegram admin
+    # Forward digest and document to Telegram admin
     telegram_sent = False
     if BOT_TOKEN and ADMIN_CHAT:
         try:
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
-            caption = f"New brief ({locale or 'en'}): {safe} ({round(size/1024/1024, 2)} MB)"
             async with httpx.AsyncClient(timeout=60.0) as client:
+                # 1) Send digest message
+                text = (
+                    f"<b>New brief</b> ({(locale or 'en').upper()})\n"
+                    f"<b>Name:</b> {name}\n"
+                    f"<b>Company:</b> {company}\n"
+                    f"<b>Phone:</b> {phone}\n"
+                    f"<b>Email:</b> {email}\n"
+                    f"<b>File:</b> {safe} ({round(size/1024/1024, 2)} MB)"
+                )
+                sm_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+                _sm = await client.post(sm_url, data={"chat_id": ADMIN_CHAT, "text": text, "parse_mode": "HTML"})
+
+                # 2) Send file as document
+                sd_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
                 with open(dest, "rb") as fh:
-                    data = {"chat_id": ADMIN_CHAT, "caption": caption}
+                    data = {"chat_id": ADMIN_CHAT, "caption": f"{safe}"}
                     files = {"document": (safe, fh, file.content_type or "application/octet-stream")}
-                    r = await client.post(url, data=data, files=files)
-                    if r.status_code >= 400:
-                        logger.warning(f"Telegram send failed: {r.status_code} {r.text}")
-                    else:
-                        telegram_sent = True
+                    _sd = await client.post(sd_url, data=data, files=files)
+
+                if (_sm.status_code < 400) or (_sd.status_code < 400):
+                    telegram_sent = True
+                else:
+                    logger.warning(
+                        f"Telegram send failed: message={_sm.status_code} file={_sd.status_code}"
+                    )
         except Exception as e:
             logger.error(f"Failed to send to Telegram: {e}", exc_info=True)
             # Don't fail the request if Telegram fails
