@@ -5,6 +5,8 @@ import { TasksModal } from './components/TasksModal'
 import { ChatBox } from './components/Chat'
 import { SkillDetailView } from './components/SkillDetail'
 import { createI18n, detectLocale } from './lib/i18n'
+import { safeInitTelegram } from './lib/telegram'
+import { clientLog } from './lib/clientLog'
 
 function useQuery() {
   return useMemo(() => new URLSearchParams(window.location.search), [])
@@ -24,6 +26,12 @@ export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname))
   const [isTasksOpen, setIsTasksOpen] = useState(false)
   const [i18n] = useState(() => createI18n(detectLocale()))
+
+  useEffect(() => {
+    // Initialize Telegram WebApp safely without blocking UI
+    const { inTg } = safeInitTelegram()
+    clientLog('info', 'miniapp_init', { inTg })
+  }, [])
 
   useEffect(() => {
     const onPop = () => setRoute(parseRoute(window.location.pathname))

@@ -34,46 +34,8 @@ WORKDIR /usr/share/nginx/html
 # Copy built SPA assets
 COPY --from=build /app/dist/ /usr/share/nginx/html/
 
-# Provide nginx config inline as required
-RUN set -eux; \
-    cat > /etc/nginx/conf.d/default.conf <<'NGINXCONF'
-server {
-  listen 8080;
-  server_name _;
-  root /usr/share/nginx/html;
-  index index.html;
-
-  client_max_body_size 64m;
-
-  location /assets/ {
-    expires 1y;
-    add_header Cache-Control "public, max-age=31536000, immutable";
-    try_files $uri =404;
-  }
-
-  location / {
-    try_files $uri /index.html;
-  }
-
-  # Proxy client telemetry to API service
-  location = /client-log {
-    proxy_pass http://api:8080/client-log;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
-
-  # Proxy brief uploads (and any other /briefs/* endpoints) to API
-  location /briefs/ {
-    proxy_pass http://api:8080/briefs/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
-}
-NGINXCONF
+# Copy nginx config from repo (persistent)
+COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 8080
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { normalizeCalLink } from "../shared/cal";
 import { createI18n } from "../lib/i18n";
 import { BriefUploadModal } from "./BriefUploadModal";
@@ -15,6 +15,12 @@ export function PrimaryActions({ onSkills, onTasks }: Props) {
     import.meta.env.VITE_CAL_LINK || "dmitrybond/intro-30m"
   );
   const [uploadOpen, setUploadOpen] = useState(false);
+  useEffect(() => {
+    try {
+      const brief = new URLSearchParams(window.location.search).get("brief");
+      if (brief === "1") setUploadOpen(true);
+    } catch {}
+  }, []);
 
   return (
     <>

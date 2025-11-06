@@ -93,7 +93,8 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]" onClick={onClose}>
-      <div className="form-dark bg-white dark:bg-zinc-900 rounded-2xl p-4 w-[92%] max-w-md" onClick={(e) => e.stopPropagation()}>
+      <div className="form-dark relative bg-white dark:bg-zinc-900 rounded-2xl p-4 w-[92%] max-w-md" onClick={(e) => e.stopPropagation()}>
+        <button aria-label="Close" className="absolute right-3 top-3 text-white/80" onClick={onClose}>✕</button>
         <ModalErrorBoundary>
           <h2 className="text-lg font-semibold mb-3 dark:text-white">{i18n.t("brief.title")}</h2>
 
