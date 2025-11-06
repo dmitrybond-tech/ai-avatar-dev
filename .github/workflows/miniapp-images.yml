@@ -38,8 +38,8 @@ jobs:
           file: ./apps/miniapp-web/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ env.IMAGE }}:main
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -50,7 +50,7 @@ jobs:
       - name: Export image digest
         run: |
           mkdir -p dist
-          echo "${{ env.IMAGE }}@$(docker buildx imagetools inspect ${{ env.IMAGE }}:${{ github.sha }} --format '{{json .Manifest.Digest}}' | sed 's/[\"}]//g')" > dist/image-digest-web.txt
+          echo "${{ env.IMAGE }}@$(docker buildx imagetools inspect ${{ env.IMAGE }}:sha-${{ github.sha }} --format '{{json .Manifest.Digest}}' | sed 's/[\"}]//g')" > dist/image-digest-web.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4.4.3
@@ -90,8 +90,8 @@ jobs:
           file: ./apps/miniapp-api/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ env.IMAGE }}:main
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -102,7 +102,7 @@ jobs:
       - name: Export image digest
         run: |
           mkdir -p dist
-          echo "${{ env.IMAGE }}@$(docker buildx imagetools inspect ${{ env.IMAGE }}:${{ github.sha }} --format '{{json .Manifest.Digest}}' | sed 's/[\"}]//g')" > dist/image-digest-api.txt
+          echo "${{ env.IMAGE }}@$(docker buildx imagetools inspect ${{ env.IMAGE }}:sha-${{ github.sha }} --format '{{json .Manifest.Digest}}' | sed 's/[\"}]//g')" > dist/image-digest-api.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4.4.3
@@ -143,8 +143,8 @@ jobs:
           file: ./apps/miniapp-bot/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ env.IMAGE }}:main
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -160,8 +160,8 @@ jobs:
           file: ./apps/miniapp_bot/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ env.IMAGE }}:main
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -172,7 +172,7 @@ jobs:
       - name: Export image digest
         run: |
           mkdir -p dist
-          echo "${{ env.IMAGE }}@$(docker buildx imagetools inspect ${{ env.IMAGE }}:${{ github.sha }} --format '{{json .Manifest.Digest}}' | sed 's/[\"}]//g')" > dist/image-digest-bot.txt
+          echo "${{ env.IMAGE }}@$(docker buildx imagetools inspect ${{ env.IMAGE }}:sha-${{ github.sha }} --format '{{json .Manifest.Digest}}' | sed 's/[\"}]//g')" > dist/image-digest-bot.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4.4.3

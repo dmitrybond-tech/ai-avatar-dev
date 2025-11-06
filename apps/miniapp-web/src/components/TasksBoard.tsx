@@ -42,30 +42,40 @@ export default function TasksBoard() {
   }
   if (err) return <div className="text-red-600 text-sm">Error: {err}</div>;
 
-  const Column = ({ title, items }: { title: string; items: PublicTask[] }) => (
-    <div>
-      <div className="font-semibold mb-2">{title} ({items.length})</div>
-      <div className="grid gap-2">
-        {items.map(t => (
-          <a key={t.id} href={t.url} target="_blank" rel="noreferrer"
-             className="block rounded-lg p-3 border hover:shadow-sm transition">
-            <div className="text-sm font-medium line-clamp-2">{t.title}</div>
-            <div className="h-2 rounded bg-gray-100 mt-2">
-              <div className="h-2 rounded bg-gray-400" style={{ width: `${t.progressPct}%` }} />
-            </div>
-            <div className="flex flex-wrap gap-1 mt-2">
-              {t.tags.map(tag => (
-                <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 border text-gray-700">{tag}</span>
-              ))}
-            </div>
-            <div className="mt-2 text-[11px] text-gray-500">
-              {t.reviewAt ? `Review: ${new Date(t.reviewAt).toLocaleString()}` : `Updated: ${new Date(t.lastUpdated).toLocaleString()}`}
-            </div>
-          </a>
-        ))}
+  const Column = ({ title, items }: { title: string; items: PublicTask[] }) => {
+    const isOverdue = (reviewAt?: string) => {
+      if (!reviewAt) return false;
+      return new Date(reviewAt) < new Date();
+    };
+
+    return (
+      <div>
+        <div className="font-semibold mb-2">{title} ({items.length})</div>
+        <div className="grid gap-2">
+          {items.map(t => {
+            const overdue = isOverdue(t.reviewAt);
+            return (
+              <a key={t.id} href={t.url} target="_blank" rel="noreferrer"
+                 className={`block rounded-lg p-3 border hover:shadow-sm transition ${overdue ? 'border-red-300 bg-red-50' : ''}`}>
+                <div className="text-sm font-medium line-clamp-2">{t.title}</div>
+                <div className="h-2 rounded bg-gray-100 mt-2">
+                  <div className="h-2 rounded bg-gray-400" style={{ width: `${t.progressPct}%` }} />
+                </div>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {t.tags.map(tag => (
+                    <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 border text-gray-700">{tag}</span>
+                  ))}
+                </div>
+                <div className={`mt-2 text-[11px] ${overdue ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
+                  {t.reviewAt ? `Review: ${new Date(t.reviewAt).toLocaleString()}` : `Updated: ${new Date(t.lastUpdated).toLocaleString()}`}
+                </div>
+              </a>
+            );
+          })}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

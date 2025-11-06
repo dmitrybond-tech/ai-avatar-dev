@@ -2,7 +2,8 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException
 
-from apps.miniapp_api.integrations.notion_public_tasks import (
+# Use relative imports to survive dash/underscore copy
+from ..integrations.notion_public_tasks import (
     PublicTaskOut,
     PublicTaskCreate,
     PublicTaskUpdate,
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/tasks", tags=["public-tasks"])
 
 @router.on_event("startup")
 def _startup_check() -> None:
+    """Validate Notion schema on startup (non-blocking)."""
     try:
         assert_schema()
     except Exception:
@@ -44,23 +46,24 @@ def create_public_task(data: PublicTaskCreate) -> PublicTaskOut:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/{page_id}", response_model=PublicTaskOut)
-def patch_task(page_id: str, data: PublicTaskUpdate) -> PublicTaskOut:
+@router.patch("/{id}", response_model=PublicTaskOut)
+def patch_task(id: str, data: PublicTaskUpdate) -> PublicTaskOut:
     try:
-        return update_task(page_id, data)
+        return update_task(id, data)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{page_id}/comment")
-def post_comment(page_id: str, payload: dict) -> dict:
+@router.post("/{id}/comment")
+def post_comment(id: str, payload: dict) -> dict:
+    """Add an internal Notion comment to a task page."""
     text = str(payload.get("text", "")).strip()
     if not text:
         raise HTTPException(status_code=400, detail="text is required")
     try:
-        add_comment(page_id, text)
+        add_comment(id, text)
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

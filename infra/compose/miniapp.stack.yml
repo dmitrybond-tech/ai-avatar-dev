@@ -7,6 +7,10 @@ services:
       - DEFAULT_LANG=${DEFAULT_LANG:-ru}
       - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
       - CAL_HOST=${CAL_HOST:-cal.com}
+      - NOTION_API_KEY=${NOTION_API_KEY}
+      - NOTION_PUBLIC_TASKS_DB_ID=${NOTION_PUBLIC_TASKS_DB_ID}
+      - NOTION_TIMEOUT=${NOTION_TIMEOUT:-10}
+      - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
       interval: 30s

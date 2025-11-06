@@ -27,7 +27,8 @@ app.add_middleware(
 
 try:
     # Mount public tasks router under /api prefix
-    from apps.miniapp_api.routers.public_tasks import router as public_tasks_router
+    # Use relative import to survive dash/underscore copy
+    from .routers.public_tasks import router as public_tasks_router
     app.include_router(public_tasks_router, prefix="/api")
 except Exception:
     # Optional in dev if dependencies are missing; avoids startup crash
@@ -71,6 +72,14 @@ class CalLinkResponse(BaseModel):
 @app.get("/healthz")
 async def healthz() -> Dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/healthz/revision")
+def healthz_revision() -> Dict[str, str]:
+    """Return container image revision for deployment verification."""
+    # Try Docker image label first, then APP_REVISION env var
+    revision = os.getenv("org.opencontainers.image.revision") or os.getenv("APP_REVISION") or "unknown"
+    return {"revision": revision}
 
 
 @app.get("/health")
@@ -136,3 +145,15 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8080"))
     uvicorn.run("apps.miniapp_api.main:app", host="0.0.0.0", port=port, reload=True)
+
+# Debug: print routes at container start (for verification)
+# This runs when uvicorn imports the module (not in __main__ mode)
+if __name__ != "__main__":
+    import sys
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        routes = sorted([r.path for r in app.routes])
+        logger.info(f"Registered routes: {routes}")
+    except Exception:
+        pass  # Don't fail if routes aren't initialized yet

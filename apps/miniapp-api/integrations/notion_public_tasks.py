@@ -86,34 +86,45 @@ def set_status_property(status_name: Optional[str], is_status_type: bool) -> dic
 
 
 def assert_schema() -> None:
+    """Verify Notion database schema matches expected fields. Logs warnings instead of crashing."""
     if not NOTION_PUBLIC_TASKS_DB_ID:
         return
-    c = _client()
-    db = c.databases.retrieve(database_id=NOTION_PUBLIC_TASKS_DB_ID)
-    props = db.get("properties", {})
-    required = {
-        PROP_TITLE: "title",
-        PROP_STATUS: ("status", "select"),
-        PROP_PUBLIC: "checkbox",
-        PROP_SCOPE: "number",
-        PROP_DONE: "number",
-        PROP_PROGRESS_PCT: "number",
-        PROP_REVIEW_AT: "date",
-    }
-    missing, wrong = [], []
-    for k, exp in required.items():
-        if k not in props:
-            missing.append(k)
-            continue
-        actual = props[k].get("type")
-        if isinstance(exp, tuple):
-            if actual not in exp:
+    try:
+        c = _client()
+        db = c.databases.retrieve(database_id=NOTION_PUBLIC_TASKS_DB_ID)
+        props = db.get("properties", {})
+        required = {
+            PROP_TITLE: "title",
+            PROP_STATUS: ("status", "select"),
+            PROP_PUBLIC: "checkbox",
+            PROP_SCOPE: "number",
+            PROP_DONE: "number",
+            PROP_PROGRESS_PCT: "number",
+            PROP_REVIEW_AT: "date",
+        }
+        missing, wrong = [], []
+        for k, exp in required.items():
+            if k not in props:
+                missing.append(k)
+                continue
+            actual = props[k].get("type")
+            if isinstance(exp, tuple):
+                if actual not in exp:
+                    wrong.append(f"{k} (got {actual})")
+            elif actual != exp:
                 wrong.append(f"{k} (got {actual})")
-        elif actual != exp:
-            wrong.append(f"{k} (got {actual})")
-    if missing or wrong:
-        # Log-only in this minimal module; callers swallow exceptions
-        raise ValueError(f"Notion schema mismatch: missing={missing}, wrong={wrong}")
+        if missing or wrong:
+            # Log warning instead of crashing
+            import warnings
+            warnings.warn(
+                f"Notion schema mismatch: missing={missing}, wrong={wrong}. "
+                "Tasks API may not work correctly.",
+                UserWarning
+            )
+    except Exception as e:
+        # Log and continue if schema check fails
+        import warnings
+        warnings.warn(f"Notion schema check failed: {e}", UserWarning)
 
 
 def _page_to_out(page: dict, is_status_type: bool) -> PublicTaskOut:
@@ -138,7 +149,7 @@ def _page_to_out(page: dict, is_status_type: bool) -> PublicTaskOut:
         reviewAt=review_at,
         lastUpdated=page.get("last_edited_time", ""),
         tags=tags,
-        url=f"https://notion.so/{page_id.replace('-', '')}",
+        url=f"https://notion.so/{page_id.replace('-', '')}" if page_id else "",
     )
 
 
