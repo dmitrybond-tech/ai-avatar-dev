@@ -1,0 +1,12 @@
+services:
+  api:
+    env_file:
+      - .env.miniapp
+    environment:
+      PORT: 8080
+      DEFAULT_LANG: ${DEFAULT_LANG:-ru}
+      CAL_USERNAME: ${CAL_USERNAME:-dmitrybond}
+      CAL_HOST: ${CAL_HOST:-cal.com}
+      NOTION_TIMEOUT: ${NOTION_TIMEOUT:-10}
+      WEBSITE_ORIGIN: ${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
+

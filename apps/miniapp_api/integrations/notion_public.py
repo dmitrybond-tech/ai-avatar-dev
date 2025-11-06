@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import List, Optional
 
@@ -17,7 +18,11 @@ def _client() -> Client:
 
 
 def resolve_schema(client: Client, dbid: str) -> dict:
-    db = client.databases.retrieve(database_id=dbid)
+    try:
+        db = client.databases.retrieve(database_id=dbid)
+    except Exception as e:
+        logging.getLogger(__name__).warning("Failed to retrieve Notion database schema: %s", e.__class__.__name__)
+        raise
     props = db.get("properties", {})
 
     title_prop = None
@@ -104,7 +109,11 @@ def query_public_tasks(client: Client, dbid: str, statuses: Optional[List[str]],
         }
         if cursor:
             params["start_cursor"] = cursor
-        resp = client.databases.query(**params)
+        try:
+            resp = client.databases.query(**params)
+        except Exception as e:
+            logging.getLogger(__name__).warning("Notion query failed: %s", e.__class__.__name__)
+            raise
         results.extend(resp.get("results", []))
         has_more = resp.get("has_more", False)
         cursor = resp.get("next_cursor")

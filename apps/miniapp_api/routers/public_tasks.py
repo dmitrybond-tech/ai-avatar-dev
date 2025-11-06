@@ -1,10 +1,10 @@
 from typing import List, Optional
 
+import logging
+import os
 from fastapi import APIRouter, HTTPException, Query
 
 from apps.miniapp_api.integrations.notion_public import _client, resolve_schema, query_public_tasks
-
-import os
 
 
 router = APIRouter(prefix="/tasks", tags=["public-tasks"])
@@ -18,6 +18,7 @@ def list_public_tasks(
     try:
         dbid = os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "").strip()
         if not dbid:
+            logging.getLogger(__name__).warning("Notion DB id is not configured")
             raise HTTPException(status_code=502, detail={"error": "notion_unreachable"})
         parsed: Optional[List[str]] = None
         if statuses and statuses.strip():
@@ -28,9 +29,11 @@ def list_public_tasks(
         return query_public_tasks(c, dbid, parsed, limit)
     except HTTPException:
         raise
-    except ValueError:
+    except ValueError as e:
+        logging.getLogger(__name__).warning("Bad request while listing public tasks: %s", e.__class__.__name__)
         raise HTTPException(status_code=400, detail={"error": "bad_request"})
-    except Exception:
+    except Exception as e:
+        logging.getLogger(__name__).warning("Notion unreachable: %s", e.__class__.__name__)
         raise HTTPException(status_code=502, detail={"error": "notion_unreachable"})
 
 
@@ -48,5 +51,6 @@ def debug_tasks() -> dict:
             "statusProp": schema["status_prop"],
             "statusValues": schema["status_values"],
         }
-    except Exception:
+    except Exception as e:
+        logging.getLogger(__name__).warning("Debug schema fetch failed: %s", e.__class__.__name__)
         return {"titleProp": None, "publicProp": None, "statusProp": None, "statusValues": []}
