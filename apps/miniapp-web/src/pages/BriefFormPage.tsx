@@ -109,15 +109,22 @@ export function BriefFormPage() {
       if (form.message?.trim()) {
         fd.append("message", form.message.trim());
       }
-      const res = await fetch("/briefs/upload", {
-        method: "POST",
-        body: fd,
-      });
-      if (!res.ok) {
-        const errorText = await res.text().catch(() => String(res.status));
-        throw new Error(errorText || String(res.status));
+
+      async function postBrief(fd: FormData) {
+        const tryPost = async (url: string) => {
+          const res = await fetch(url, { method: "POST", body: fd });
+          if (!res.ok) throw new Error(String(res.status));
+          return res.json();
+        };
+        try {
+          return await tryPost("/briefs/upload");
+        } catch (e: any) {
+          // fallback if nginx doesn't proxy /briefs/ yet
+          return await tryPost("/api/briefs/upload");
+        }
       }
-      const result = await res.json();
+
+      const result = await postBrief(fd);
       if (result.ok) {
         setSubmitStatus({ type: "success", message: i18n.t("brief.success") });
         // Reset form
