@@ -24,6 +24,66 @@
         }
       } catch (e) { console.warn('TG init skipped', e); }
     </script>
+
+    <!-- Cal.com embed loader (idempotent) -->
+    <script type="text/javascript">
+      (function (C, A, L) {
+        let p = function (a, ar) { a.q.push(ar); };
+        let d = C.document;
+        C.Cal = C.Cal || function () {
+          let cal = C.Cal, ar = arguments;
+          if (!cal.loaded) {
+            cal.ns = {}; cal.q = cal.q || [];
+            var s = d.createElement("script");
+            s.src = A; d.head.appendChild(s);
+            cal.loaded = true;
+          }
+          if (ar[0] === L) {
+            const api = function () { p(api, arguments); };
+            const namespace = ar[1];
+            api.q = api.q || [];
+            if (typeof namespace === "string") {
+              cal.ns[namespace] = cal.ns[namespace] || api;
+              p(cal.ns[namespace], ar);
+              p(cal, ["initNamespace", namespace]);
+            } else p(cal, ar);
+            return;
+          }
+          p(cal, ar);
+        };
+      })(window, "https://app.cal.com/embed/embed.js", "init");
+
+      // Init Cal.com under the 'booking' namespace
+      Cal("init", "booking", { origin: "https://cal.com" });
+
+      // Pick up VITE_CAL_LINK from script tag data attribute (injected below)
+      (function () {
+        var el = document.getElementById("cal-config");
+        var link = (el && el.dataset && el.dataset.calLink) || "dmitrybond/intro-call";
+        // Preload the meeting link for faster popup
+        // Use a small delay to ensure Cal script has processed the init queue
+        setTimeout(function() {
+          if (window.Cal && window.Cal.ns && window.Cal.ns["booking"]) {
+            Cal.ns["booking"]("preload", { calLink: link });
+          }
+        }, 500);
+        // Optional event hook (keep disabled by default)
+        // Cal.ns["booking"]("on", "bookingSuccessful", (payload) => { console.info("bookingSuccessful", payload); });
+      })();
+    </script>
+
+    <!-- Telegram UX nudge (safe no-op outside Telegram) -->
+    <script>
+      if (window.Telegram && Telegram.WebApp) {
+        try { Telegram.WebApp.expand(); } catch (_) {}
+      }
+    </script>
+
+    <!-- Runtime-calibrated data from Vite env -->
+    <script id="cal-config" type="application/json"
+            data-cal-link="%VITE_CAL_LINK%">
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

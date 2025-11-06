@@ -3,6 +3,14 @@
     "choose_language": "Choose your language",
     "confirm_language": "Language set to English"
   },
+  "menu": {
+    "openMiniApp": "Open MiniApp",
+    "bookCall": "Book a call",
+    "brief": "Brief for Estimate"
+  },
+  "messages": {
+    "main": "Choose an action:"
+  },
   "buttons": {
     "language": "Language",
     "brief": "📎 Brief for estimate",

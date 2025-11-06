@@ -1,23 +1,22 @@
-import { getCal } from "../api/client";
-
 type Props = {
   onSkills: () => void;
   onTasks: () => void;
 };
 
 export function PrimaryActions({ onSkills, onTasks }: Props) {
-  const onBook = async () => {
-    try {
-      const { url } = await getCal();
-      window.open(url, "_blank");
-    } catch {
-      window.open("https://cal.com/dmitrybond/intro-30m", "_blank");
-    }
-  };
+  const calLink = import.meta.env.VITE_CAL_LINK || "dmitrybond/intro-call";
 
   return (
     <div className="grid grid-cols-1 gap-2">
-      <button className="h-12 rounded bg-black text-white" onClick={onBook}>Book a meeting</button>
+      <button
+        id="book-meeting"
+        className="h-12 rounded bg-black text-white"
+        data-cal-link={calLink}
+        data-cal-namespace="booking"
+        data-cal-config='{"layout":"month_view","theme":"auto"}'
+      >
+        Book a meeting
+      </button>
       <button className="h-12 rounded bg-gray-100" onClick={onSkills}>What I can do?</button>
       <button className="h-12 rounded bg-gray-100" onClick={onTasks}>Task status</button>
     </div>

@@ -3,6 +3,14 @@
     "choose_language": "Выберите язык",
     "confirm_language": "Язык установлен: Русский"
   },
+  "menu": {
+    "openMiniApp": "Открыть мини-приложение",
+    "bookCall": "Назначить звонок",
+    "brief": "Бриф на оценку"
+  },
+  "messages": {
+    "main": "Выберите действие:"
+  },
   "buttons": {
     "language": "Язык",
     "brief": "📎 ТЗ на оценку",

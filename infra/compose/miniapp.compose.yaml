@@ -33,6 +33,9 @@ services:
       - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
       - CAL_EVENT_INTRO=${CAL_EVENT_INTRO:-intro-30m}
       - WEBAPP_URL=${WEBAPP_URL:-http://web:8080}
+      - MINIAPP_URL=${MINIAPP_URL:-${WEBAPP_URL}}
+      - CAL_URL=${CAL_URL:-https://cal.com/${CAL_USERNAME:-dmitrybond}/${CAL_EVENT_INTRO:-intro-30m}}
+      - BRIEF_URL=${BRIEF_URL}
     depends_on:
       - api
     restart: unless-stopped
