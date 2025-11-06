@@ -96,8 +96,17 @@ async def fetch_tasks() -> dict:
 
 
 def main_menu(lang: str) -> InlineKeyboardMarkup:
+    # Add ?lang parameter to web_app URL
+    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+    base_url = MINIAPP_URL
+    parsed = urlparse(base_url)
+    query_params = parse_qs(parsed.query)
+    query_params['lang'] = [lang]
+    new_query = urlencode(query_params, doseq=True)
+    miniapp_url_with_lang = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+    
     rows = [
-        [InlineKeyboardButton(text=i18n.t(lang, "menu.openMiniApp"), web_app=WebAppInfo(url=MINIAPP_URL))],
+        [InlineKeyboardButton(text=i18n.t(lang, "menu.openMiniApp"), web_app=WebAppInfo(url=miniapp_url_with_lang))],
         [InlineKeyboardButton(text=i18n.t(lang, "menu.bookCall"), url=CAL_URL)],
         [InlineKeyboardButton(text=i18n.t(lang, "menu.brief"), url=BRIEF_URL or "https://example.com")],
     ]

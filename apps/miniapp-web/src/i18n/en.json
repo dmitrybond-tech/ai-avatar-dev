@@ -1,0 +1,21 @@
+{
+  "header": {
+    "title": "Dmitry's Assistant",
+    "personalSite": "Personal website"
+  },
+  "actions": {
+    "bookCall": "Book a call",
+    "brief": "Brief for Estimate",
+    "whatICanDo": "What I can do?",
+    "taskStatus": "Task status"
+  },
+  "brief": {
+    "title": "Upload brief for estimate",
+    "chooseFile": "Choose a file",
+    "send": "Send",
+    "cancel": "Cancel",
+    "success": "Your file has been sent. We'll get back to you soon.",
+    "error": "Upload failed. Please try again."
+  }
+}
+

@@ -25,9 +25,11 @@ app.add_middleware(
 # Use relative import to survive dash/underscore copy
 from .routers.public_tasks import router as public_tasks_router
 from .routers.skills import router as skills_router
+from .routers.briefs import router as briefs_router
 app.include_router(public_tasks_router, prefix="/api")
 app.include_router(skills_router)
 app.include_router(skills_router, prefix="/api")
+app.include_router(briefs_router)
 
 
 class TaskItem(BaseModel):

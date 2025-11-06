@@ -8,7 +8,7 @@ from app.core.settings import settings
 from app.core.logging import setup_logging, get_logger
 from app.db.connection import init_db, close_db
 from app.adapters.web import health, chat, chat_ws, voice, telegram, chat_stub
-from app.adapters.web import client_log, public_tasks
+from app.adapters.web import client_log, public_tasks, briefs
 from app.integrations.notion_public_tasks import assert_schema
 
 setup_logging()
@@ -82,6 +82,7 @@ app.include_router(telegram.router, tags=["telegram"])
 app.include_router(chat_stub.router, tags=["chat-stub"])
 app.include_router(client_log.router, tags=["client-log"])
 app.include_router(public_tasks.router)
+app.include_router(briefs.router)
 
 
 if __name__ == "__main__":
