@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
-import { getRules } from "../api/client";
-import type { SkillItem } from "../types";
+import { getSkills } from "../api/client";
+import type { ProjectedSkill } from "../types";
+
+function getLang(): 'ru' | 'en' {
+  return (navigator.language || '').toLowerCase().startsWith('ru') ? 'ru' : 'en';
+}
 
 export function SkillsList() {
-  const [items, setItems] = useState<SkillItem[] | null>(null);
+  const [items, setItems] = useState<ProjectedSkill[] | null>(null);
 
   useEffect(() => {
     let alive = true;
-    getRules().then((r) => alive && setItems(r.items)).catch(() => setItems([]));
+    getSkills(getLang()).then((list) => alive && setItems(list)).catch(() => setItems([]));
     return () => { alive = false };
   }, []);
 
@@ -17,14 +21,31 @@ export function SkillsList() {
     ))}</div>;
   }
 
+  function open(slug: string) {
+    const url = `/skills/${slug}`;
+    window.history.pushState({}, '', url);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }
+
   return (
     <div className="grid gap-2">
       {items.map((s) => (
-        <div key={s.id} className="p-3 rounded border border-gray-200">
-          <div className="font-medium">{s.title}</div>
-          {s.desc && <div className="text-sm text-gray-600">{s.desc}</div>}
-          {s.tags && <div className="mt-1 text-xs text-gray-500">{s.tags.join(', ')}</div>}
-        </div>
+        <button
+          key={s.slug}
+          className="p-3 rounded border border-gray-200 text-left active:scale-[0.99]"
+          onClick={() => open(s.slug)}
+        >
+          <div className="flex items-start gap-2">
+            {s.icon && <span className="text-xl leading-none">{s.icon}</span>}
+            <div className="flex-1">
+              <div className="font-medium">{s.title}</div>
+              {s.short && <div className="text-sm text-gray-600">{s.short}</div>}
+              {s.tags?.length ? (
+                <div className="mt-1 text-xs text-gray-500 truncate">{s.tags.join(', ')}</div>
+              ) : null}
+            </div>
+          </div>
+        </button>
       ))}
     </div>
   );

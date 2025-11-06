@@ -167,8 +167,27 @@ Test all endpoints:
 # API health
 curl -f http://127.0.0.1:8081/healthz
 
-# API rules
-curl -f "http://127.0.0.1:8081/rules?lang=ru"
+# API skills
+curl -f "http://127.0.0.1:8081/skills?lang=ru"
+
+## Migration: Rules → Skills
+
+- New endpoints:
+  - `GET /skills` — list of skills (supports `?lang=ru|en` to project localized fields)
+  - `GET /skills/{slug}` — detail for a skill (supports `?lang=ru|en`)
+- Backward-compatible aliases (kept during rollout):
+  - `GET /rules` → same payload as `/skills` (200)
+  - `GET /rules/{slug}` → same payload as `/skills/{slug}` (200)
+- Source of truth: Notion DB referenced by `NOTION_DB_SKILLS` (if unset, uses `NOTION_DB` and accepts legacy entries with context "Rules").
+- Fallback seeds: `apps/miniapp-api/seed/skills.en.json` and `skills.ru.json` are merged with Notion; Notion takes precedence.
+
+Smoke tests (prod):
+
+```bash
+curl -sS https://miniapp.dmitrybond.tech/skills | jq '.[0]'
+curl -sS https://miniapp.dmitrybond.tech/skills/automation | jq '.slug'
+curl -sS https://miniapp.dmitrybond.tech/rules | jq '.[0]' # legacy alias
+```
 
 # Web app (should show fallback outside Telegram)
 curl -f http://127.0.0.1:5175/

@@ -24,18 +24,14 @@ app.add_middleware(
 # Mount public tasks router under /api prefix
 # Use relative import to survive dash/underscore copy
 from .routers.public_tasks import router as public_tasks_router
+from .routers.skills import router as skills_router, alias_router as rules_alias_router
 app.include_router(public_tasks_router, prefix="/api")
-
-
-class SkillItem(BaseModel):
-    id: str
-    title: str
-    desc: str | None = None
-    tags: List[str] | None = None
+app.include_router(skills_router)
+app.include_router(rules_alias_router)
 
 
 class RulesResponse(BaseModel):
-    items: List[SkillItem] = Field(default_factory=list)
+    items: List[dict] = Field(default_factory=list)
 
 
 class TaskItem(BaseModel):
@@ -80,17 +76,10 @@ def health() -> Dict[str, str]:
 
 
 @app.get("/rules", response_model=RulesResponse)
-async def get_rules() -> RulesResponse:
-    return RulesResponse(items=[
-        SkillItem(id="cloud", title="Cloud migrations", desc="AWS/Azure/GCP", tags=["cloud", "migration"]),
-        SkillItem(id="pm", title="Project/Release mgmt", tags=["pmi", "agile"]),
-        SkillItem(id="integrations", title="Systems integrations", desc="APIs, webhooks, ETL"),
-        SkillItem(id="devops", title="DevOps & CI/CD", tags=["docker", "k8s", "gh-actions"]),
-        SkillItem(id="ai", title="AI assistants", desc="RAG, LLM tools, ChatOps"),
-        SkillItem(id="security", title="Security reviews", tags=["policies", "hardening"]),
-        SkillItem(id="product", title="Product discovery", tags=["MVP", "roadmap"]),
-        SkillItem(id="automation", title="Workflow automation", tags=["zapier", "n8n", "make"]),
-    ])
+async def get_rules(lang: str | None = Query(default=None)) -> RulesResponse:
+    # Backward-compatible alias to /skills
+    from .routers.skills import list_skills
+    return RulesResponse(items=list_skills(lang=lang))
 
 
 @app.get("/tasks/status", response_model=TasksStatusResponse)

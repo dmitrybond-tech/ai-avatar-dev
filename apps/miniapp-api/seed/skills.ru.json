@@ -1,0 +1,77 @@
+[
+  {
+    "slug": "automation",
+    "title_ru": "Автоматизация",
+    "short_ru": "Python ETL/ELT, миграции и связка ваших систем.",
+    "tags": ["python", "etl", "elt", "migrations", "integrations"],
+    "bullets_ru": [
+      "Проектирование ETL/ELT-пайплайнов на Python (pandas, SQLAlchemy; cron или лёгкие планировщики).",
+      "Скрипты миграций данных и инфраструктуры (БД, переносы в AWS/Azure/GCP).",
+      "Автоматизация рутины и бэк-офисных процессов.",
+      "Интеграции с CRM/ERP/таск-трекингом (REST/GraphQL/Webhooks).",
+      "Отладка и настройка ATS-парсеров/скрейперов и sample-потоков."
+    ],
+    "examples_ru": ["Ночной импорт CSV → PostgreSQL", "Миграция MySQL → Aurora", "Синхронизация заявок Jira ↔ CRM"]
+  },
+  {
+    "slug": "cloud-devops",
+    "title_ru": "Облако и DevOps",
+    "short_ru": "AWS/Azure/GCP, IaC, CI/CD, контейнеры.",
+    "tags": ["cloud", "aws", "azure", "gcp", "iac", "cicd"],
+    "bullets_ru": [
+      "Проектирование безопасных облачных архитектур и landing zone.",
+      "Настройка CI/CD и автоматического тестирования.",
+      "Контейнеризация сервисов и оптимизация образов."
+    ],
+    "examples_ru": ["Blue/green деплой на ECS", "GH Actions CI для монорепы"]
+  },
+  {
+    "slug": "data-analytics",
+    "title_ru": "Аналитика данных",
+    "short_ru": "Метрики, воронки, дашборды, A/B-тесты.",
+    "tags": ["analytics", "metrics", "dashboards"],
+    "bullets_ru": [
+      "Определение продуктовых метрик и инструментирования.",
+      "Сбор дашбордов, когорт и воронок.",
+      "Планирование и анализ A/B-тестов."
+    ],
+    "examples_ru": ["Amplitude → BI-дашборды"]
+  },
+  {
+    "slug": "integrations-apis",
+    "title_ru": "Интеграции и API",
+    "short_ru": "REST/GraphQL/gRPC/Webhooks, авторизация, лимиты, ретраи.",
+    "tags": ["rest", "graphql", "grpc", "webhooks"],
+    "bullets_ru": [
+      "Надёжные интеграции с ретраями и backoff.",
+      "Обработка вебхуков и проверка подписей.",
+      "OAuth-потоки и жизненный цикл токенов."
+    ],
+    "examples_ru": ["Интеграция Stripe + CRM", "Оповещения GitHub → Slack"]
+  },
+  {
+    "slug": "web-mobile",
+    "title_ru": "Веб и мини-приложения",
+    "short_ru": "Лёгкие веб-приложения, миниаппы, API-бэкенды.",
+    "tags": ["react", "fastapi", "vite"],
+    "bullets_ru": [
+      "Мобильные интерфейсы для WebView/Telegram.",
+      "Быстрые JSON API и адаптеры.",
+      "Оптимизация бандлов и рантайма."
+    ],
+    "examples_ru": ["Миниапп в Telegram"]
+  },
+  {
+    "slug": "security",
+    "title_ru": "Безопасность",
+    "short_ru": "Секреты, минимальные права, базовая безопасность приложений.",
+    "tags": ["security", "secrets", "iam"],
+    "bullets_ru": [
+      "Управление секретами и ротация.",
+      "Принцип наименьших прав и аудит.",
+      "Базовая закалка и политики."
+    ],
+    "examples_ru": ["Чистка IAM"]
+  }
+]
+

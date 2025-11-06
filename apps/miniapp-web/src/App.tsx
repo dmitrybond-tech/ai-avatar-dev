@@ -1,17 +1,33 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PrimaryActions } from './components/Buttons'
 import { SkillsList } from './components/Skills'
 import { TasksModal } from './components/TasksModal'
 import { ChatBox } from './components/Chat'
+import { SkillDetailView } from './components/SkillDetail'
 
 function useQuery() {
   return useMemo(() => new URLSearchParams(window.location.search), [])
 }
 
+type Route = { name: 'home' } | { name: 'skills-list' } | { name: 'skill-detail', slug: string }
+
+function parseRoute(pathname: string): Route {
+  if (pathname === '/skills') return { name: 'skills-list' }
+  const m = pathname.match(/^\/skills\/([a-z0-9\-]+)$/)
+  if (m) return { name: 'skill-detail', slug: m[1] }
+  return { name: 'home' }
+}
+
 export function App() {
   const _q = useQuery() // reserved for future
-  const [view, setView] = useState<'home'|'skills'>('home')
+  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname))
   const [isTasksOpen, setIsTasksOpen] = useState(false)
+
+  useEffect(() => {
+    const onPop = () => setRoute(parseRoute(window.location.pathname))
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
 
   return (
     <div className="min-h-dvh w-full bg-white text-black">
@@ -26,16 +42,22 @@ export function App() {
           />
           <div className="font-semibold">Dmitry's Assistant</div>
         </header>
-        {view === 'home' && (
+        {route.name === 'home' && (
           <>
-            <PrimaryActions onSkills={()=>setView('skills')} onTasks={()=>setIsTasksOpen(true)} />
+            <PrimaryActions onSkills={()=>{ window.history.pushState({}, '', '/skills'); window.dispatchEvent(new PopStateEvent('popstate')) }} onTasks={()=>setIsTasksOpen(true)} />
             <ChatBox />
           </>
         )}
-        {view === 'skills' && (
+        {route.name === 'skills-list' && (
           <>
-            <button className="text-sm" onClick={()=>setView('home')}>← Back</button>
+            <button className="text-sm" onClick={()=>{ window.history.pushState({}, '', '/'); window.dispatchEvent(new PopStateEvent('popstate')) }}>← Back</button>
             <SkillsList />
+          </>
+        )}
+        {route.name === 'skill-detail' && (
+          <>
+            <button className="text-sm" onClick={()=>{ window.history.pushState({}, '', '/skills'); window.dispatchEvent(new PopStateEvent('popstate')) }}>← Back</button>
+            <SkillDetailView slug={route.slug} />
           </>
         )}
       </div>

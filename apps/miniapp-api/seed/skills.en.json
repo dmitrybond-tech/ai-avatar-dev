@@ -1,0 +1,127 @@
+[
+  {
+    "slug": "automation",
+    "title_en": "Automation",
+    "title_ru": "Автоматизация",
+    "short_en": "Python ETL/ELT, migrations, and glue between your systems.",
+    "short_ru": "Python ETL/ELT, миграции и связка ваших систем.",
+    "tags": ["python", "etl", "elt", "migrations", "integrations"],
+    "bullets_en": [
+      "Build ETL/ELT pipelines in Python (pandas, SQLAlchemy; cron or lightweight schedulers).",
+      "Write data and infrastructure migration scripts (DBs, cloud moves to AWS/Azure/GCP).",
+      "Automate routine tasks and back-office workflows.",
+      "Integrate with CRMs/ERPs/ticketing systems via REST/GraphQL/Webhooks.",
+      "Debug and tune ATS parsers/scrapers and sample flows."
+    ],
+    "bullets_ru": [
+      "Проектирование ETL/ELT-пайплайнов на Python (pandas, SQLAlchemy; cron или лёгкие планировщики).",
+      "Скрипты миграций данных и инфраструктуры (БД, переносы в AWS/Azure/GCP).",
+      "Автоматизация рутины и бэк-офисных процессов.",
+      "Интеграции с CRM/ERP/таск-трекингом (REST/GraphQL/Webhooks).",
+      "Отладка и настройка ATS-парсеров/скрейперов и sample-потоков."
+    ],
+    "examples_en": ["Clean CSV → PostgreSQL nightly", "Migrate MySQL → Aurora", "Sync tickets Jira ↔ CRM"],
+    "examples_ru": ["Ночной импорт CSV → PostgreSQL", "Миграция MySQL → Aurora", "Синхронизация заявок Jira ↔ CRM"]
+  },
+  {
+    "slug": "cloud-devops",
+    "title_en": "Cloud & DevOps",
+    "title_ru": "Облако и DevOps",
+    "short_en": "AWS/Azure/GCP, IaC, CI/CD, containers.",
+    "short_ru": "AWS/Azure/GCP, IaC, CI/CD, контейнеры.",
+    "tags": ["cloud", "aws", "azure", "gcp", "iac", "cicd"],
+    "bullets_en": [
+      "Design secure cloud architectures and landing zones.",
+      "Set up CI/CD pipelines and automated testing.",
+      "Containerize services and optimize images."
+    ],
+    "bullets_ru": [
+      "Проектирование безопасных облачных архитектур и landing zone.",
+      "Настройка CI/CD и автоматического тестирования.",
+      "Контейнеризация сервисов и оптимизация образов."
+    ],
+    "examples_en": ["ECS blue/green deploy", "GH Actions monorepo CI"],
+    "examples_ru": ["Blue/green деплой на ECS", "GH Actions CI для монорепы"]
+  },
+  {
+    "slug": "data-analytics",
+    "title_en": "Data Analytics",
+    "title_ru": "Аналитика данных",
+    "short_en": "Metrics, funnels, dashboards, A/B testing.",
+    "short_ru": "Метрики, воронки, дашборды, A/B-тесты.",
+    "tags": ["analytics", "metrics", "dashboards"],
+    "bullets_en": [
+      "Define product metrics and instrumentation.",
+      "Build dashboards, cohorts, and funnels.",
+      "Plan and analyze A/B tests."
+    ],
+    "bullets_ru": [
+      "Определение продуктовых метрик и инструментирования.",
+      "Сбор дашбордов, когорт и воронок.",
+      "Планирование и анализ A/B-тестов."
+    ],
+    "examples_en": ["Amplitude → BI dashboards"],
+    "examples_ru": ["Amplitude → BI-дашборды"]
+  },
+  {
+    "slug": "integrations-apis",
+    "title_en": "Integrations & APIs",
+    "title_ru": "Интеграции и API",
+    "short_en": "REST/GraphQL/gRPC/Webhooks, auth flows, rate limits, retries.",
+    "short_ru": "REST/GraphQL/gRPC/Webhooks, авторизация, лимиты, ретраи.",
+    "tags": ["rest", "graphql", "grpc", "webhooks"],
+    "bullets_en": [
+      "Design robust API integrations with retries and backoff.",
+      "Implement webhook handlers and signature checks.",
+      "Handle OAuth flows and token lifecycles."
+    ],
+    "bullets_ru": [
+      "Надёжные интеграции с ретраями и backoff.",
+      "Обработка вебхуков и проверка подписей.",
+      "OAuth-потоки и жизненный цикл токенов."
+    ],
+    "examples_en": ["Stripe + CRM sync", "GitHub → Slack alerts"],
+    "examples_ru": ["Интеграция Stripe + CRM", "Оповещения GitHub → Slack"]
+  },
+  {
+    "slug": "web-mobile",
+    "title_en": "Web & Mobile Miniapps",
+    "title_ru": "Веб и мини-приложения",
+    "short_en": "Lightweight web apps, miniapps, API backends.",
+    "short_ru": "Лёгкие веб-приложения, миниаппы, API-бэкенды.",
+    "tags": ["react", "fastapi", "vite"],
+    "bullets_en": [
+      "Build mobile-first UIs for WebView/Telegram.",
+      "Create fast JSON APIs and adapters.",
+      "Optimize bundles and runtime."
+    ],
+    "bullets_ru": [
+      "Мобильные интерфейсы для WebView/Telegram.",
+      "Быстрые JSON API и адаптеры.",
+      "Оптимизация бандлов и рантайма."
+    ],
+    "examples_en": ["Telegram MiniApp MVP"],
+    "examples_ru": ["Миниапп в Telegram"]
+  },
+  {
+    "slug": "security",
+    "title_en": "Security",
+    "title_ru": "Безопасность",
+    "short_en": "Secrets, least privilege, basic app sec posture.",
+    "short_ru": "Секреты, минимальные права, базовая безопасность приложений.",
+    "tags": ["security", "secrets", "iam"],
+    "bullets_en": [
+      "Secret management and rotation.",
+      "Least-privilege IAM and audit.",
+      "Baseline hardening and policies."
+    ],
+    "bullets_ru": [
+      "Управление секретами и ротация.",
+      "Принцип наименьших прав и аудит.",
+      "Базовая закалка и политики."
+    ],
+    "examples_en": ["IAM cleanup"],
+    "examples_ru": ["Чистка IAM"]
+  }
+]
+
