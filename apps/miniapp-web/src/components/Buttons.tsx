@@ -3,8 +3,12 @@ type Props = {
   onTasks: () => void;
 };
 
+import { normalizeCalLink } from "../shared/cal";
+
 export function PrimaryActions({ onSkills, onTasks }: Props) {
-  const calLink = import.meta.env.VITE_CAL_LINK || "dmitrybond/intro-call";
+  const calLink = normalizeCalLink(
+    import.meta.env.VITE_CAL_LINK || "dmitrybond/intro-30m"
+  );
 
   return (
     <div className="grid grid-cols-1 gap-2">

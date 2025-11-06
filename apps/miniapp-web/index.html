@@ -55,21 +55,19 @@
 
       // Init Cal.com under the 'booking' namespace
       Cal("init", "booking", { origin: "https://cal.com" });
+    </script>
 
-      // Pick up VITE_CAL_LINK from script tag data attribute (injected below)
-      (function () {
-        var el = document.getElementById("cal-config");
-        var link = (el && el.dataset && el.dataset.calLink) || "dmitrybond/intro-call";
-        // Preload the meeting link for faster popup
-        // Use a small delay to ensure Cal script has processed the init queue
-        setTimeout(function() {
-          if (window.Cal && window.Cal.ns && window.Cal.ns["booking"]) {
-            Cal.ns["booking"]("preload", { calLink: link });
-          }
-        }, 500);
-        // Optional event hook (keep disabled by default)
-        // Cal.ns["booking"]("on", "bookingSuccessful", (payload) => { console.info("bookingSuccessful", payload); });
-      })();
+    <!-- Ensure correct calLink preload (Vite will process import.meta.env) -->
+    <script type="module">
+      const raw = import.meta.env.VITE_CAL_LINK || "dmitrybond/intro-30m";
+      const link = raw
+        .trim()
+        .replace(/^https?:\/\/(www\.)?cal\.com\//i, "")
+        .replace(/^\/+/, "")
+        .replace(/\/+$/, "") || "dmitrybond/intro-30m";
+      // Optional UI tuning
+      Cal.ns["booking"]("ui", { layout: "month_view" });
+      Cal.ns["booking"]("preload", { calLink: link });
     </script>
 
     <!-- Telegram UX nudge (safe no-op outside Telegram) -->
@@ -77,11 +75,6 @@
       if (window.Telegram && Telegram.WebApp) {
         try { Telegram.WebApp.expand(); } catch (_) {}
       }
-    </script>
-
-    <!-- Runtime-calibrated data from Vite env -->
-    <script id="cal-config" type="application/json"
-            data-cal-link="%VITE_CAL_LINK%">
     </script>
 
     <script type="module" src="/src/main.tsx"></script>
