@@ -63,6 +63,22 @@ try:
 except Exception as e:
     logging.getLogger(__name__).warning("Failed to include skills router: %s", e.__class__.__name__)
 
+# Optional diagnostics endpoint guarded by DEBUG_DIAG=1
+try:
+    if os.getenv("DEBUG_DIAG") == "1":
+        @app.get("/diag/env")
+        def diag_env() -> dict:
+            from apps.miniapp_api.core import env as _env
+            t = _env.notion_token()
+            return {
+                "NOTION_TOKEN": "SET" if bool(t) else "EMPTY",
+                "SKILLS_DB": bool(_env.skills_db()),
+                "TASKS_DB": bool(_env.tasks_db()),
+                "TIMEOUT": _env.notion_timeout(),
+            }
+except Exception:
+    pass
+
 # Public tasks aliases (/api/public and /public) returning same payload as /api/tasks/public
 try:
     from fastapi import Query, HTTPException
