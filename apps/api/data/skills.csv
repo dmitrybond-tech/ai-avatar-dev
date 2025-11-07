@@ -1,0 +1,43 @@
+Title EN,Bullets EN,Bullets RU,Examples EN,Examples RU,Short EN,Short RU,Slug,Tags,Title RU
+Automation,"Build ETL/ELT pipelines in Python (pandas, SQLAlchemy; cron or lightweight schedulers).
+Write data and infrastructure migration scripts (DBs, cloud moves to AWS/Azure/GCP).
+Automate routine tasks and back-office workflows.
+Integrate with CRMs/ERPs/ticketing systems via REST/GraphQL/Webhooks.
+Debug and tune ATS parsers/scrapers and sample flows.","Проектирование ETL/ELT-пайплайнов на Python (pandas, SQLAlchemy; cron или лёгкие планировщики).
+Скрипты миграций данных и инфраструктуры (БД, переносы в AWS/Azure/GCP).
+Автоматизация рутины и бэк-офисных процессов.
+Интеграции с CRM/ERP/таск-трекингом (REST/GraphQL/Webhooks).
+Отладка и настройка ATS-парсеров/скрейперов и sample-потоков.","Clean CSV → PostgreSQL nightly
+Migrate MySQL → Aurora
+Sync tickets Jira ↔ CRM","Ночной импорт CSV → PostgreSQL
+Миграция MySQL → Aurora
+Синхронизация заявок Jira ↔ CRM","Python ETL/ELT, migrations, and glue between your systems.","Python ETL/ELT, миграции и связка ваших систем.",automation,"python, etl, elt, migrations, integrations",Автоматизация
+Cloud & DevOps,"Design secure cloud architectures and landing zones.
+Set up CI/CD pipelines and automated testing.
+Containerize services and optimize images.","Проектирование безопасных облачных архитектур и landing zone.
+Настройка CI/CD и автоматического тестирования.
+Контейнеризация сервисов и оптимизация образов.","ECS blue/green deploy
+GH Actions monorepo CI","Blue/green деплой на ECS
+GH Actions CI для монорепы","AWS/Azure/GCP, IaC, CI/CD, containers.","AWS/Azure/GCP, IaC, CI/CD, контейнеры.",cloud-devops,"cloud, aws, azure, gcp, iac, cicd",Облако и DevOps
+Data Analytics,"Define product metrics and instrumentation.
+Build dashboards, cohorts, and funnels.
+Plan and analyze A/B tests.","Определение продуктовых метрик и инструментирования.
+Сбор дашбордов, когорт и воронок.
+Планирование и анализ A/B-тестов.",Amplitude → BI dashboards,Amplitude → BI-дашборды,"Metrics, funnels, dashboards, A/B testing.","Метрики, воронки, дашборды, A/B-тесты.",data-analytics,"analytics, metrics, dashboards",Аналитика данных
+Integrations & APIs,"Design robust API integrations with retries and backoff.
+Implement webhook handlers and signature checks.
+Handle OAuth flows and token lifecycles.","Надёжные интеграции с ретраями и backoff.
+Обработка вебхуков и проверка подписей.
+OAuth-потоки и жизненный цикл токенов.","Stripe + CRM sync
+GitHub → Slack alerts","Интеграция Stripe + CRM
+Оповещения GitHub → Slack","REST/GraphQL/gRPC/Webhooks, auth flows, rate limits, retries.","REST/GraphQL/gRPC/Webhooks, авторизация, лимиты, ретраи.",integrations-apis,"rest, graphql, grpc, webhooks",Интеграции и API
+Web & Mobile Miniapps,"Build mobile-first UIs for WebView/Telegram.
+Create fast JSON APIs and adapters.
+Optimize bundles and runtime.","Мобильные интерфейсы для WebView/Telegram.
+Быстрые JSON API и адаптеры.
+Оптимизация бандлов и рантайма.",Telegram MiniApp MVP,Миниапп в Telegram,"Lightweight web apps, miniapps, API backends.","Лёгкие веб-приложения, миниаппы, API-бэкенды.",web-mobile,"react, fastapi, vite",Веб и мини-приложения
+Security,"Secret management and rotation.
+Least-privilege IAM and audit.
+Baseline hardening and policies.","Управление секретами и ротация.
+Принцип наименьших прав и аудит.
+Базовая закалка и политики.",IAM cleanup,Чистка IAM,"Secrets, least privilege, basic app sec posture.","Секреты, минимальные права, базовая безопасность приложений.",security,"security, secrets, iam",Безопасность

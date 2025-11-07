@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     notion_skills_db_id: str = ""
     notion_timeout: int = 10
 
+    # Skills
+    skills_source: str = "auto"
+    skills_csv_path: str = ""
+    debug_skills_api: bool = False
+
     @property
     def database_url(self) -> str:
         """Build PostgreSQL connection URL."""

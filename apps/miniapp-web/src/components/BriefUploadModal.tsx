@@ -6,8 +6,6 @@ const i18n = createI18n();
 
 const ACCEPT = "image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,application/zip,application/x-zip-compressed";
 const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-const MODAL_TOP_PADDING = "calc(var(--app-header-height) + var(--modal-offset) + env(safe-area-inset-top, 0px))";
-
 class ModalErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {
     super(props);
@@ -92,16 +90,11 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex justify-center bg-black/40 px-4"
-      style={{ paddingTop: MODAL_TOP_PADDING, paddingBottom: "24px", alignItems: "flex-start", overflowY: "auto" }}
+      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/40 px-4 pb-6 pt-[var(--modal-top-offset)]"
       onClick={onClose}
     >
       <div
-        className="form-dark relative w-full max-w-md rounded-2xl bg-white p-4 dark:bg-zinc-900"
-        style={{
-          maxHeight: "calc(100vh - var(--app-header-height) - var(--modal-offset) - env(safe-area-inset-top, 0px) - 24px)",
-          overflowY: "auto",
-        }}
+        className="form-dark relative w-full max-h-[calc(100dvh_-_var(--modal-top-offset)_-_24px)] overflow-y-auto rounded-2xl bg-white p-4 dark:bg-zinc-900"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

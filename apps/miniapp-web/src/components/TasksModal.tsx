@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { fetchOpenTasks, type PublicTask } from "../shared/api/tasks";
 import TaskCard from "./TaskCard";
 
-const MODAL_TOP_PADDING = "calc(var(--app-header-height) + var(--modal-offset) + env(safe-area-inset-top, 0px))";
-
 type Props = {
   isOpen: boolean;
   onClose: () => void;
@@ -29,15 +27,10 @@ export function TasksModal({ isOpen, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-center bg-black/40 px-4 pb-10 sm:pb-12"
-      style={{ paddingTop: MODAL_TOP_PADDING, alignItems: "flex-start", overflowY: "auto" }}
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 pb-10 pt-[var(--modal-top-offset)] sm:pb-12"
     >
       <div
-        className="w-full sm:max-w-2xl rounded-2xl bg-white p-4 shadow-xl focus-visible:outline-none"
-        style={{
-          maxHeight: "calc(100vh - var(--app-header-height) - var(--modal-offset) - env(safe-area-inset-top, 0px) - 24px)",
-          overflowY: "auto",
-        }}
+        className="w-full max-h-[calc(100dvh_-_var(--modal-top-offset)_-_24px)] overflow-y-auto rounded-2xl bg-white p-4 shadow-xl focus-visible:outline-none sm:max-w-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="tasks-modal-title"

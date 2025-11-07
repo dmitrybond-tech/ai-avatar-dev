@@ -1,106 +1,63 @@
 # Mini App Bot
 
-Telegram bot that opens the Mini App WebApp using a reply keyboard button.
+Aiogram-based Telegram bot that exposes the AI Avatar miniapp through a two-button inline keyboard.
 
-## Features
+## Quick Menu
 
-- **Long Polling**: No webhook setup required (perfect for MVP/development)
-- **WebApp Button**: One-tap access to the Mini App interface
-- **Simple & Minimal**: Single file, clear logic
+- `TELEGRAM_MINIAPP_URL` — HTTPS link to the Telegram WebApp. Button label: “Открыть миниап”.
+- `TELEGRAM_BOOKING_URL` — External scheduling link (Cal.com, Calendly, etc.). Button label: “Записаться”.
+- Missing or empty values hide the corresponding button after logging a warning; the bot keeps running.
+- Text commands `/skills`, `/status`, `/tz` and their Russian equivalents now reply with a short hint plus the same two-button inline keyboard.
 
 ## Setup
 
-### 1. Create Telegram Bot
+### 1. Create the bot
 
-Talk to [@BotFather](https://t.me/BotFather) on Telegram:
+Use [@BotFather](https://t.me/BotFather) to create a bot and obtain the token.
 
-```
-/newbot
-# Follow prompts to choose name and username
-# Copy the token provided
-```
+### 2. Configure environment
 
-### 2. Configure Bot
-
-Add the token to your `.env.miniapp`:
+Add the variables to `.env.miniapp` (or the runtime env file used by Docker Compose):
 
 ```env
 TELEGRAM_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 TELEGRAM_BOT_NAME=YourBotName
-WEBAPP_URL=http://localhost:5173/miniapp/
+DEFAULT_LANG=ru
+SUPPORTED_LANGS=ru,en
+TELEGRAM_MINIAPP_URL=https://your-miniapp-host/miniapp
+TELEGRAM_BOOKING_URL=https://cal.com/your-team/intro-call
 ```
 
-**Important Notes:**
-- `WEBAPP_URL` must be publicly accessible for production use (use ngrok/cloudflare tunnel for local testing with real Telegram)
-- For local development, you can test the API separately and use a deployed frontend URL
-- In production, set `WEBAPP_URL` to your deployed frontend (e.g., `https://yourdomain.com/miniapp/`)
+Only the two `TELEGRAM_*_URL` values control the inline menu. Leave either blank to hide that button (a warning is logged at startup).
 
-### 3. Run Bot
+### 3. Run locally
 
 ```bash
-# Install dependencies
 pip install -r requirements.txt
-
-# Run
-python bot.py
+python -m apps.miniapp_bot.main
 ```
 
-## Bot Commands
+The bot defaults to long polling. Set `BOT_MODE=webhook` and `WEBHOOK_URL` if you later configure webhooks.
 
-- `/start` - Show welcome message with WebApp button
+## Behaviour
 
-## How It Works
-
-1. User sends `/start` command
-2. Bot responds with a ReplyKeyboard containing a WebApp button
-3. User taps "🤖 Open Assistant" button
-4. Telegram opens the Mini App WebApp in-app browser
-5. User interacts with the chat interface
-
-## Development vs Production
-
-### Development (Long Polling)
-✅ Current setup - perfect for local development
-- No server setup needed
-- Bot pulls messages from Telegram
-- Easy to debug
-
-### Production (Webhooks - Future)
-When scaling, consider webhooks:
-- More efficient at scale
-- Requires HTTPS endpoint
-- Instant message delivery
-
-For MVP, long polling is recommended (current setup).
-
-## Docker
-
-```bash
-# Build
-docker build -t miniapp-bot .
-
-# Run
-docker run --env-file .env.miniapp miniapp-bot
-```
+- `/start` prompts for language (reply keyboard) and then shows the inline menu.
+- The quick menu is always rendered inline; reply keyboards are not used for external links.
+- If users manually type legacy commands (`/skills`, “Навыки”, `/tz`, etc.), they are guided back to the two primary actions with the same inline buttons.
+- Brief upload, admin forwarding, and Notion logging stay available via existing handlers when enabled.
 
 ## Dependencies
 
-- python-telegram-bot==21.4
+- aiogram==3.7.0
+- pydantic>=2.4.1,<2.8
 - python-dotenv==1.0.1
+- httpx==0.27.2 (for optional integrations)
 
 ## Troubleshooting
 
-**Bot doesn't respond:**
-- Check `TELEGRAM_TOKEN` is correct
-- Ensure bot is not blocked by user
-- Check logs for errors
+- **No buttons shown:** Check `TELEGRAM_MINIAPP_URL` / `TELEGRAM_BOOKING_URL` are set and publicly accessible (HTTPS).
+- **WebApp fails to open:** The URL must match a domain configured via BotFather `/setdomain` and resolve over HTTPS.
+- **Booking link hidden:** A warning `menu.button.booking.disabled` at startup indicates the env var was missing or blank.
 
-**WebApp doesn't open:**
-- Verify `WEBAPP_URL` is publicly accessible
-- Check URL format (must include protocol: http:// or https://)
-- For production, WebApp URL must use HTTPS
-
-**Multiple instances running:**
-- Only one bot instance can poll at a time
-- Stop other instances or use webhooks for multiple servers
+Run only one polling instance at a time; multiple pollers will conflict.
 

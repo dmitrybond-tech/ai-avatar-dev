@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 from contextlib import suppress
+from datetime import datetime, timezone
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
@@ -12,13 +13,17 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     WebAppInfo,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 from aiogram.client.default import DefaultBotProperties
 from pydantic import BaseModel
 
 from .i18n import I18N
 from .state import UserStateStore
-# Brief/admin/Notion integrations removed from main flow
+from .admin import resolve_admin_chat_id, forward_brief_to_admin
+from .notion import NotionClient
 
 # Initialize dispatcher
 dp = Dispatcher()
@@ -29,19 +34,14 @@ if os.name != "nt":
         import uvloop  # type: ignore
         uvloop.install()
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://miniapp.dmitrybond.tech")
 DEFAULT_LANG = os.getenv("DEFAULT_LANG", "ru")
 SUPPORTED_LANGS = os.getenv("SUPPORTED_LANGS", "ru,en")
-CAL_USERNAME = os.getenv("CAL_USERNAME", "dmitrybond")
-CAL_EVENT_INTRO = os.getenv("CAL_EVENT_INTRO", "intro-30m")
 BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN is not set")
 BOT_NAME = os.getenv("TELEGRAM_BOT_NAME", "miniapp_bot")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://miniapp.dmitrybond.tech")
-MINIAPP_URL = os.getenv("MINIAPP_URL", WEBAPP_URL)
-CAL_URL = os.getenv("CAL_URL", f"https://cal.com/{os.getenv('CAL_USERNAME','dmitrybond')}/{os.getenv('CAL_EVENT_INTRO','intro-30m')}")
-BRIEF_URL = os.getenv("BRIEF_URL", "")
+TELEGRAM_MINIAPP_URL = os.getenv("TELEGRAM_MINIAPP_URL", "").strip()
+TELEGRAM_BOOKING_URL = os.getenv("TELEGRAM_BOOKING_URL", "").strip()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("miniapp-bot")
@@ -51,21 +51,36 @@ BOT_MODE = os.getenv("BOT_MODE", "polling")
 
 # Helpers
 _here = os.path.dirname(__file__)
-_locales_dir = os.path.join(os.path.dirname(_here), "miniapp_bot", "locales")
+_locales_dir = os.path.join(os.path.dirname(_here), "miniapp-bot", "locales")
 # Fallback if relative path differs when run via repo root
 if not os.path.isdir(_locales_dir):
     _locales_dir = os.path.join(_here, "locales")
 
 i18n = I18N(locales_dir=_locales_dir, default_lang=DEFAULT_LANG, supported_langs=SUPPORTED_LANGS)
 bot_state = UserStateStore(base_dir="/data/state")
+notion_client = NotionClient()
 
-# Hint: ensure @BotFather `/setdomain` matches MINIAPP_URL domain for WebApp buttons
-try:
-    _domain = __import__("urllib.parse").urlparse(MINIAPP_URL).netloc
-    if _domain:
-        logger.info(f"BOT: WebApp domain hint for @BotFather /setdomain: { _domain }")
-except Exception:
-    pass
+
+def _log_menu_configuration() -> None:
+    logger.info(
+        "menu.config",
+        extra={
+            "miniapp_button_enabled": bool(TELEGRAM_MINIAPP_URL),
+            "miniapp_url_len": len(TELEGRAM_MINIAPP_URL),
+            "booking_button_enabled": bool(TELEGRAM_BOOKING_URL),
+            "booking_url_len": len(TELEGRAM_BOOKING_URL),
+        },
+    )
+    if not TELEGRAM_MINIAPP_URL:
+        logger.warning(
+            "menu.button.miniapp.disabled",
+            extra={"missing_env": "TELEGRAM_MINIAPP_URL"},
+        )
+    if not TELEGRAM_BOOKING_URL:
+        logger.warning(
+            "menu.button.booking.disabled",
+            extra={"missing_env": "TELEGRAM_BOOKING_URL"},
+        )
 
 
 class SessionState(BaseModel):
@@ -86,40 +101,38 @@ def get_session(user_id: int) -> SessionState:
     return state
 
 
-async def fetch_rules() -> dict:
-    # Deprecated: Skills removed from bot menu
-    return {}
-
-async def fetch_tasks() -> dict:
-    # Deprecated: Statuses removed from bot menu
-    return {}
-
-
-def main_menu(lang: str) -> InlineKeyboardMarkup:
-    # Add ?lang parameter to web_app URL
-    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-    base_url = MINIAPP_URL
-    parsed = urlparse(base_url)
-    query_params = parse_qs(parsed.query)
-    query_params['lang'] = [lang]
-    new_query = urlencode(query_params, doseq=True)
-    miniapp_url_with_lang = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
-    
-    rows = [
-        [InlineKeyboardButton(text=i18n.t(lang, "menu.openMiniApp"), web_app=WebAppInfo(url=miniapp_url_with_lang))],
-        [InlineKeyboardButton(text=i18n.t(lang, "menu.bookCall"), url=CAL_URL)],
-        [InlineKeyboardButton(text=i18n.t(lang, "menu.brief"), url=BRIEF_URL or "https://example.com")],
-    ]
+def _menu_inline_keyboard(lang: str) -> InlineKeyboardMarkup | None:
+    rows: list[list[InlineKeyboardButton]] = []
+    if TELEGRAM_MINIAPP_URL:
+        rows.append([
+            InlineKeyboardButton(
+                text=i18n.t(lang, "buttons.open_app"),
+                web_app=WebAppInfo(url=TELEGRAM_MINIAPP_URL),
+            )
+        ])
+    if TELEGRAM_BOOKING_URL:
+        rows.append([
+            InlineKeyboardButton(
+                text=i18n.t(lang, "buttons.book"),
+                url=TELEGRAM_BOOKING_URL,
+            )
+        ])
+    if not rows:
+        return None
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def language_menu() -> InlineKeyboardMarkup:
-    """Create inline keyboard for language selection."""
-    rows = [
-        [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set_lang:ru")],
-        [InlineKeyboardButton(text="🇬🇧 English", callback_data="set_lang:en")],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+async def _send_menu_hint(
+    message: Message,
+    lang: str,
+    text_key: str = "menu.hint",
+) -> None:
+    reply_markup = _menu_inline_keyboard(lang)
+    await message.answer(
+        i18n.t(lang, text_key),
+        reply_markup=reply_markup,
+        disable_web_page_preview=True,
+    )
 
 
 @dp.message(Command("healthz"))
@@ -129,101 +142,290 @@ async def cmd_healthz(message: Message) -> None:
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message) -> None:
-    """Handle /start: show language selection if no locale, otherwise show main menu."""
+    """Handle /start: show language selector and main keyboard."""
     user_id = message.from_user.id if message.from_user else 0
+    profile_lang = (message.from_user.language_code if message.from_user else None) or None
     session = get_session(user_id)
+    # resolve lang preference
     stored = bot_state.get_lang(user_id)
-    
-    # Check if user has explicitly chosen a language (stored in persistent state)
-    if not stored:
-        # No language chosen yet - show language selection
-        # Use a default language for the "choose language" message itself
-        profile_lang = (message.from_user.language_code if message.from_user else None) or None
-        default_lang = i18n.resolve_lang(user_id, None, profile_lang)
-        await message.answer(i18n.t(default_lang, "language.choose"), reply_markup=language_menu())
-        return
-    
-    # Language is set - show main menu
-    session.lang = stored
-    await message.answer(i18n.t(session.lang, "messages.main"), reply_markup=main_menu(session.lang))
+    lang = i18n.resolve_lang(user_id, stored, profile_lang)
+    session.lang = lang
+
+    # Language selection keyboard
+    lang_kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Русский"), KeyboardButton(text="English")],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+    await message.answer(i18n.t(lang, "start.choose_language"), reply_markup=lang_kb)
 
 
 @dp.message(Command("language"))
 async def cmd_language(message: Message) -> None:
-    """Handle /language: always show language selection."""
     user_id = message.from_user.id if message.from_user else 0
     session = get_session(user_id)
-    # Use current session language or default for the "choose language" message
-    lang = session.lang or DEFAULT_LANG
-    await message.answer(i18n.t(lang, "language.choose"), reply_markup=language_menu())
+    lang_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Русский"), KeyboardButton(text="English")]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+    await message.answer(i18n.t(session.lang, "start.choose_language"), reply_markup=lang_kb)
 
 
-# Removed: book via reply keyboard; now URL button is in inline menu
+@dp.message(Command("book"))
+@dp.message(F.text.in_({"Записаться", "Book a call"}))
+async def on_book(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    session = get_session(user_id)
+    if TELEGRAM_BOOKING_URL:
+        await message.answer(
+            i18n.t(session.lang, "menu.booking_link", url=TELEGRAM_BOOKING_URL),
+            reply_markup=_menu_inline_keyboard(session.lang),
+            disable_web_page_preview=False,
+        )
+    else:
+        await _send_menu_hint(message, session.lang, text_key="menu.booking_unavailable")
 
 
-# Removed: skills command/menu
+@dp.message(Command("skills"))
+@dp.message(F.text.in_({"Навыки", "Skills"}))
+async def on_skills(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    session = get_session(user_id)
+    await _send_menu_hint(message, session.lang)
 
 
-# Removed: statuses command/menu
+@dp.message(Command("status", "statuses"))
+@dp.message(F.text.in_({"Статусы", "Statuses"}))
+async def on_statuses(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    session = get_session(user_id)
+    await _send_menu_hint(message, session.lang)
 
 
-# Removed: legacy inline language toggle
+@dp.callback_query(F.data.startswith("lang:"))
+async def on_lang_toggle(cb: CallbackQuery) -> None:
+    user_id = cb.from_user.id if cb.from_user else 0
+    session = get_session(user_id)
+    session.lang = "en" if session.lang == "ru" else "ru"
+    await cb.answer("Language switched")
+    await show_scene(cb, session.scene)
 
 
-# Removed: legacy nav callbacks; main menu uses direct URLs/web_app
+@dp.callback_query(F.data.startswith("nav:"))
+async def on_nav(cb: CallbackQuery) -> None:
+    user_id = cb.from_user.id if cb.from_user else 0
+    session = get_session(user_id)
+    target = cb.data.split(":", 1)[1]
+    session.scene = target if target in {"start", "about", "services", "cases", "book"} else "start"
+    if target == "book":
+        if TELEGRAM_BOOKING_URL:
+            await cb.message.answer(
+                i18n.t(session.lang, "menu.booking_link", url=TELEGRAM_BOOKING_URL),
+                reply_markup=_menu_inline_keyboard(session.lang),
+                disable_web_page_preview=False,
+            )
+        else:
+            await _send_menu_hint(cb.message, session.lang, text_key="menu.booking_unavailable")
+        await cb.answer()
+        return
+    await cb.answer()
+    await show_scene(cb, session.scene)
 
 
 async def show_scene(cb: CallbackQuery | Message, scene_key: str) -> None:
-    # Kept for backward compatibility; no-op
+    user_id = cb.from_user.id if getattr(cb, "from_user", None) else 0
+    session = get_session(user_id)
+    # Minimal no-op to retain handler; new flows use fallback buttons
     if isinstance(cb, CallbackQuery):
         await cb.answer()
 
 
 # In-memory awaiting brief flags
 _awaiting_brief: set[int] = set()
-
-
-# Removed: old ReplyKeyboard menu
-
-
-@dp.callback_query(F.data.startswith("set_lang:"))
-async def on_language_callback(callback: CallbackQuery) -> None:
-    """Handle language selection callback."""
-    user_id = callback.from_user.id if callback.from_user else 0
-    lang_code = callback.data.split(":")[1] if ":" in callback.data else DEFAULT_LANG
-    
-    # Validate language
-    if lang_code not in set(SUPPORTED_LANGS.split(",")):
-        lang_code = DEFAULT_LANG
-    
-    # Save language to session and persistent storage
+@dp.message(F.text.in_({"Русский", "English"}))
+async def on_language_choice(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
     session = get_session(user_id)
-    session.lang = lang_code
-    bot_state.set_lang(user_id, lang_code)
-    
-    # Answer callback query
-    await callback.answer()
-    
-    # Try to edit the message, fallback to new message if edit fails
-    if callback.message:
-        try:
-            await callback.message.edit_text(i18n.t(lang_code, "language.changed"))
-        except Exception:
-            # If edit fails, send a new message
-            await callback.message.answer(i18n.t(lang_code, "language.changed"))
-        
-        # Send main menu
-        await callback.message.answer(i18n.t(lang_code, "messages.main"), reply_markup=main_menu(lang_code))
+    choice = (message.text or "").lower()
+    lang = "ru" if "рус" in choice else "en"
+    # validate against supported langs
+    if lang not in set(SUPPORTED_LANGS.split(",")):
+        lang = DEFAULT_LANG
+    bot_state.set_lang(user_id, lang)
+    session.lang = lang
+    await message.answer(
+        i18n.t(lang, "start.confirm_language"),
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    await _send_menu_hint(message, session.lang, text_key="menu.welcome")
 
 
-# Removed: brief upload flow (now external URL)
+@dp.message(Command("tz"))
+@dp.message(F.text.func(lambda t: t == i18n.t("ru", "buttons.brief") or t == i18n.t("en", "buttons.brief")))
+async def on_brief_button(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    session = get_session(user_id)
+    await _send_menu_hint(message, session.lang)
 
 
-# Removed: handling of document/photo/text for brief
+@dp.message(F.document | F.photo | F.text)
+async def on_any_message(message: Message, bot: Bot) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    if user_id not in _awaiting_brief:
+        return
+    session = get_session(user_id)
+    _awaiting_brief.discard(user_id)
+
+    username = message.from_user.username if message.from_user else ""
+    full_name = (message.from_user.full_name if message.from_user else "").strip()
+    language_code = (message.from_user.language_code if message.from_user else None) or "—"
+    # Telegram provides message.date in UTC; normalize and format ISO8601 with Z
+    try:
+        msg_dt = message.date
+        if msg_dt.tzinfo is None:
+            msg_dt = msg_dt.replace(tzinfo=timezone.utc)
+        sent_at_utc = msg_dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    except Exception:
+        sent_at_utc = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+    caption = (message.caption or message.text or "") if message else ""
+
+    file_id: str | None = None
+    file_name: str | None = None
+    file_size: int | None = None
+    file_url: str | None = None
+    file_unique_id: str | None = None
+    mime_type: str | None = None
+    photo_width: int | None = None
+    photo_height: int | None = None
+
+    # Extract file info
+    try:
+        if message.document:
+            file_id = message.document.file_id
+            file_unique_id = message.document.file_unique_id
+            file_name = message.document.file_name
+            file_size = message.document.file_size
+            mime_type = message.document.mime_type
+        elif message.photo:
+            # largest photo
+            ph = message.photo[-1]
+            file_id = ph.file_id
+            file_unique_id = ph.file_unique_id
+            file_size = getattr(ph, "file_size", None)
+            photo_width = getattr(ph, "width", None)
+            photo_height = getattr(ph, "height", None)
+    except Exception:
+        pass
+
+    # Forward/copy to admin and send metadata
+    try:
+        admin_id = await resolve_admin_chat_id(bot)
+        # Always copy the original message to preserve content/caption
+        await forward_brief_to_admin(message, admin_id, bot)
+
+        # Build metadata HTML
+        username_disp = f"@{username}" if username else "—"
+        name_disp = full_name or "—"
+        file_block_lines: list[str] = []
+        if message.document:
+            file_block_lines.append(f"• <b>File:</b> name={file_name or '—'} mime={mime_type or '—'} size={file_size or '—'}")
+            if file_id:
+                file_block_lines.append(f"• <b>file_id:</b> {file_id}")
+            if file_unique_id:
+                file_block_lines.append(f"• <b>file_unique_id:</b> {file_unique_id}")
+        elif message.photo:
+            size_part = f" size={file_size}" if file_size is not None else ""
+            dims_part = f" {photo_width or '—'}x{photo_height or '—'}" if (photo_width or photo_height) else ""
+            file_block_lines.append(f"• <b>Photo:</b>{dims_part}{size_part}")
+            if file_id:
+                file_block_lines.append(f"• <b>file_id:</b> {file_id}")
+            if file_unique_id:
+                file_block_lines.append(f"• <b>file_unique_id:</b> {file_unique_id}")
+        file_block = ("\n" + "\n".join(file_block_lines)) if file_block_lines else ""
+
+        meta = (
+            "<b>Brief metadata</b>\n"
+            f"• <b>User ID:</b> {user_id}\n"
+            f"• <b>Username:</b> {username_disp}\n"
+            f"• <b>Name:</b> {name_disp}\n"
+            f"• <b>Lang:</b> {language_code}\n"
+            f"• <b>Sent at (UTC):</b> {sent_at_utc}"
+            f"{file_block}"
+        )
+        await bot.send_message(admin_id, meta, parse_mode='HTML', disable_web_page_preview=True)
+    except Exception as e:
+        logger.error(f"Failed to forward brief to admin: {e}")
+        await message.answer(i18n.t(session.lang, "errors.try_again"))
+        return
+
+    # Build Bot API file URL if possible
+    try:
+        if file_id:
+            file = await bot.get_file(file_id)
+            if getattr(file, "file_path", None):
+                token = os.getenv("TELEGRAM_TOKEN", "")
+                if token:
+                    file_url = f"https://api.telegram.org/file/bot{token}/{file.file_path}"
+    except Exception:
+        file_url = None
+
+    # Create Notion page (best-effort)
+    try:
+        iso_ts = sent_at_utc
+        title = f"Brief: {username or str(user_id)} {iso_ts[:10]}"
+        payload = {
+            "title": title,
+            # legacy fields retained
+            "language": session.lang,
+            "timestamp": iso_ts,
+            "caption": caption,
+            "file_id": file_id or "",
+            "file_name": file_name or "",
+            "file_size": file_size or None,
+            "tg_username": username or "",
+            "tg_user_id": user_id,
+            "file_url": file_url or "",
+            # extended metadata
+            "sender_id": user_id,
+            "username": username or "",
+            "full_name": full_name or "",
+            "language_code": language_code or "",
+            "sent_at": iso_ts,
+            "source_chat_id": message.chat.id if getattr(message, "chat", None) else None,
+            "source_message_id": message.message_id,
+            "mime_type": mime_type or "",
+            "file_unique_id": file_unique_id or "",
+            "photo_width": photo_width,
+            "photo_height": photo_height,
+        }
+        notion_page_id: str | None = None
+        if notion_client.configured():
+            notion_page_id = await notion_client.create_brief_page(payload)
+        logger.info(
+            "brief.handle.success",
+            extra={
+                "sender_id": user_id,
+                "username": username or "",
+                "sent_at": iso_ts,
+                "has_file": bool(file_id),
+                "notion_page_id": notion_page_id,
+            },
+        )
+    except Exception as e:
+        logger.error(f"Failed to create Notion page for brief: {e}")
+
+    await message.answer(
+        i18n.t(session.lang, "brief.received"),
+        reply_markup=_menu_inline_keyboard(session.lang),
+    )
 
 
 async def main() -> None:
     """Main function with webhook/polling mode support."""
+    _log_menu_configuration()
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     
     try:
@@ -261,5 +463,3 @@ if __name__ == "main":  # unlikely, but keep parity
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-

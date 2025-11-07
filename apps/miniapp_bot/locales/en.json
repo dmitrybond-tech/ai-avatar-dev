@@ -3,23 +3,19 @@
     "choose_language": "Choose your language",
     "confirm_language": "Language set to English"
   },
-  "menu": {
-    "openMiniApp": "Open MiniApp",
-    "bookCall": "Book a call",
-    "brief": "Brief for Estimate"
-  },
-  "messages": {
-    "main": "Choose an action:"
-  },
-  "language": {
-    "choose": "Choose your language:",
-    "changed": "Language updated to English."
-  },
   "buttons": {
     "language": "Language",
     "brief": "📎 Brief for estimate",
-    "open_app": "Open MiniApp",
-    "book": "Book a call"
+    "open_app": "Open miniapp",
+    "book": "Book a call",
+    "skills": "Skills",
+    "statuses": "Statuses"
+  },
+  "menu": {
+    "welcome": "All set! Use the buttons below to open the miniapp or book a call.",
+    "hint": "Use the buttons below: \"Open miniapp\" or \"Book a call\".",
+    "booking_link": "Tap \"Book a call\" or open this link: {url}",
+    "booking_unavailable": "The booking button is temporarily unavailable. Contact us to schedule manually."
   },
   "brief": {
     "prompt_upload": "Please attach a file (document/photo) and optional text.",

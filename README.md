@@ -101,6 +101,13 @@ curl http://localhost:8080/healthz
 Start-Process "http://localhost:3000"
 ```
 
+## 🧠 Skills Data Sources
+
+- **Primary (default)**: Notion database referenced by `NOTION_DB_SKILLS` and `NOTION_API_KEY`.
+- **Fallback CSV**: Bundled at `apps/api/data/skills.csv`. Enable with `SKILLS_SOURCE=csv` or leave `SKILLS_SOURCE=auto` to fall back automatically when Notion fails.
+- **Local dev**: `setx SKILLS_SOURCE csv` (PowerShell) or add `SKILLS_SOURCE=csv` / `SKILLS_CSV_PATH=apps/api/data/skills.csv` to `infra/compose/.env`.
+- **Docker Compose**: The `api` service reads `SKILLS_SOURCE`, `SKILLS_CSV_PATH`, and `DEBUG_SKILLS_API`. Defaults in `infra/compose/env.example` already point to the packaged CSV.
+
 ## 📦 Service Endpoints
 
 | Service  | URL                          | Description           |

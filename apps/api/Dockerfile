@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY src /app/src
+COPY data /app/data
 
 # Create data directory
 RUN mkdir -p /data/tts

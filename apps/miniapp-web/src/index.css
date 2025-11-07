@@ -4,7 +4,8 @@
 
 :root {
   --app-header-height: 56px;
-  --modal-offset: 12px;
+  --modal-top-offset: calc(env(safe-area-inset-top, 0px) + 60px);
+  /* To switch to a 70px top offset, change 60px to 70px in the calc above. */
 }
 
 html, body, #root { height: 100%; }
@@ -22,3 +23,4 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI
   .form-dark .hint { color: rgba(255, 255, 255, 0.7); }
   .form-dark .error { color: #fecaca; }
 }
+

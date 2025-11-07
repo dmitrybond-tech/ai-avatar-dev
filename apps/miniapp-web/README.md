@@ -36,3 +36,4 @@ Notes:
 - Optionally set `VITE_API_BASE_URL` at build-time; empty means same-origin.
 - Telegram init runs on first render via `src/lib/tg.ts`.
  - Static assets emitted to `/assets/` with long caching; SPA routes fallback to `index.html`.
+ - Modal offset lives in `src/index.css`; change the `60px` inside `--modal-top-offset` to `70px` to raise dialogs.

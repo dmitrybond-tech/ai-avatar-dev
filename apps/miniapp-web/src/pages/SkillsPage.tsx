@@ -18,9 +18,6 @@ const titles: Record<Lang, string> = {
   en: 'Skills',
 }
 
-const overlayPadding = 'calc(var(--app-header-height) + var(--modal-offset) + env(safe-area-inset-top, 0px))'
-const modalMaxHeight = 'calc(100vh - var(--app-header-height) - var(--modal-offset) - env(safe-area-inset-top, 0px) - 24px)'
-
 function sortSkills(list: Skill[]): Skill[] {
   return [...list].sort((a, b) => {
     const orderA = typeof a.order === 'number' ? a.order : Number.POSITIVE_INFINITY
@@ -28,7 +25,7 @@ function sortSkills(list: Skill[]): Skill[] {
     if (orderA !== orderB) {
       return orderA - orderB
     }
-    return a.name.localeCompare(b.name)
+    return a.title.localeCompare(b.title)
   })
 }
 
@@ -36,6 +33,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
   const [skills, setSkills] = useState<Skill[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [reloadToken, setReloadToken] = useState(0)
   const dialogRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -59,7 +57,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
       active = false
       controller.abort()
     }
-  }, [lang])
+  }, [lang, reloadToken])
 
   const activeSkill = useMemo(() => {
     if (!selectedSlug || !skills?.length) return null
@@ -106,11 +104,23 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
     onCloseDetail()
   }, [onCloseDetail])
 
+  const handleRetry = useCallback(() => {
+    setReloadToken((token) => token + 1)
+  }, [])
+
   const listContent = useMemo(() => {
     if (error) {
       return (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {error}
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <p>{lang === 'ru' ? 'Не удалось загрузить навыки.' : 'Failed to load skills.'}</p>
+          <p className="mt-1 text-xs text-red-600">{error}</p>
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="mt-3 inline-flex items-center justify-center rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition hover:border-red-300 hover:text-red-800"
+          >
+            {lang === 'ru' ? 'Попробовать ещё раз' : 'Try again'}
+          </button>
         </div>
       )
     }
@@ -145,15 +155,12 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
             aria-expanded={activeSkill?.slug === item.slug && drawerOpen}
           >
             <div className="flex gap-3">
-              {item.icon ? (
-                <span className="text-2xl leading-none" aria-hidden="true">{item.icon}</span>
-              ) : null}
               <div className="flex flex-col gap-2">
-                <div className="text-base font-medium text-black">{item.name}</div>
+                <div className="text-base font-medium text-black">{item.title}</div>
                 <div className="text-sm text-gray-600">{item.short}</div>
                 {item.tags?.length ? (
                   <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-                    {item.tags.map((tag) => (
+                    {Array.from(new Set(item.tags)).map((tag) => (
                       <span key={tag} className="rounded-full bg-gray-100 px-2 py-0.5">
                         {tag}
                       </span>
@@ -166,7 +173,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
         ))}
       </section>
     )
-  }, [skills, error, lang, handleSelect, activeSkill, drawerOpen])
+  }, [skills, error, lang, handleSelect, activeSkill, drawerOpen, handleRetry])
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-4">
@@ -185,8 +192,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
 
       {drawerOpen && activeSkill ? (
         <div
-          className="fixed inset-0 z-50 flex justify-center bg-black/40 px-4 pb-10 backdrop-blur-sm"
-          style={{ paddingTop: overlayPadding, overflowY: 'auto', alignItems: 'flex-start' }}
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 pb-10 pt-[var(--modal-top-offset)] backdrop-blur-sm"
           role="presentation"
           onClick={handleClose}
         >
@@ -194,10 +200,9 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label={activeSkill.name}
+            aria-label={activeSkill.title}
             tabIndex={-1}
-            className="relative w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl focus-visible:outline-none"
-            style={{ maxHeight: modalMaxHeight, overflowY: 'auto' }}
+            className="relative w-full max-h-[calc(100dvh_-_var(--modal-top-offset)_-_24px)] overflow-y-auto max-w-lg rounded-3xl bg-white p-5 shadow-xl focus-visible:outline-none"
             onClick={(event) => event.stopPropagation()}
           >
             <button
@@ -208,7 +213,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
             >
               ×
             </button>
-            <SkillDetailView skill={activeSkill} />
+            <SkillDetailView skill={activeSkill} lang={lang} />
           </div>
         </div>
       ) : null}

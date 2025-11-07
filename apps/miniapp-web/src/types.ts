@@ -1,12 +1,11 @@
 export type Skill = {
   id: string;
   slug: string;
-  name: string;
+  title: string;
   short: string;
-  long: string;
+  bullets: string[];
+  examples: string[];
   tags: string[];
-  category?: string | null;
-  icon?: string | null;
   order?: number | null;
 };
 

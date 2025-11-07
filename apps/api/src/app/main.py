@@ -12,6 +12,7 @@ from app.core.logging import setup_logging, get_logger
 from app.db.connection import close_db, init_db
 from app.adapters.web import chat, chat_stub, chat_ws, client_log, health, briefs, public_tasks, skills, telegram, voice
 from app.integrations.notion_public_tasks import assert_schema
+from app.providers.skills import log_skills_source_configuration
 
 setup_logging()
 logger = get_logger(__name__)
@@ -28,6 +29,8 @@ async def lifespan(app: FastAPI):
     tts_dir = Path("/data/tts")
     tts_dir.mkdir(parents=True, exist_ok=True)
     
+    log_skills_source_configuration()
+
     # Assert Notion schema if configured
     try:
         if settings.notion_api_key and settings.notion_public_tasks_db_id:

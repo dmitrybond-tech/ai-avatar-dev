@@ -15,11 +15,9 @@ from aiogram.types import (
     WebAppInfo,
     KeyboardButton,
     ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 from aiogram.client.default import DefaultBotProperties
-from aiogram.utils.markdown import hbold
-
-import httpx
 from pydantic import BaseModel
 
 from .i18n import I18N
@@ -36,16 +34,14 @@ if os.name != "nt":
         import uvloop  # type: ignore
         uvloop.install()
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://miniapp.dmitrybond.tech")
 DEFAULT_LANG = os.getenv("DEFAULT_LANG", "ru")
 SUPPORTED_LANGS = os.getenv("SUPPORTED_LANGS", "ru,en")
-CAL_USERNAME = os.getenv("CAL_USERNAME", "dmitrybond")
-CAL_EVENT_INTRO = os.getenv("CAL_EVENT_INTRO", "intro-30m")
 BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN is not set")
 BOT_NAME = os.getenv("TELEGRAM_BOT_NAME", "miniapp_bot")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://miniapp.dmitrybond.tech")
+TELEGRAM_MINIAPP_URL = os.getenv("TELEGRAM_MINIAPP_URL", "").strip()
+TELEGRAM_BOOKING_URL = os.getenv("TELEGRAM_BOOKING_URL", "").strip()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("miniapp-bot")
@@ -63,6 +59,28 @@ if not os.path.isdir(_locales_dir):
 i18n = I18N(locales_dir=_locales_dir, default_lang=DEFAULT_LANG, supported_langs=SUPPORTED_LANGS)
 bot_state = UserStateStore(base_dir="/data/state")
 notion_client = NotionClient()
+
+
+def _log_menu_configuration() -> None:
+    logger.info(
+        "menu.config",
+        extra={
+            "miniapp_button_enabled": bool(TELEGRAM_MINIAPP_URL),
+            "miniapp_url_len": len(TELEGRAM_MINIAPP_URL),
+            "booking_button_enabled": bool(TELEGRAM_BOOKING_URL),
+            "booking_url_len": len(TELEGRAM_BOOKING_URL),
+        },
+    )
+    if not TELEGRAM_MINIAPP_URL:
+        logger.warning(
+            "menu.button.miniapp.disabled",
+            extra={"missing_env": "TELEGRAM_MINIAPP_URL"},
+        )
+    if not TELEGRAM_BOOKING_URL:
+        logger.warning(
+            "menu.button.booking.disabled",
+            extra={"missing_env": "TELEGRAM_BOOKING_URL"},
+        )
 
 
 class SessionState(BaseModel):
@@ -83,43 +101,38 @@ def get_session(user_id: int) -> SessionState:
     return state
 
 
-async def fetch_rules() -> dict:
-    url = f"{API_BASE_URL}/rules"
-    params = None
-    timeout = httpx.Timeout(5.0, connect=3.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.get(url, params=params)
-        resp.raise_for_status()
-        return resp.json()
-
-async def fetch_tasks() -> dict:
-    url = f"{API_BASE_URL}/tasks/status"
-    timeout = httpx.Timeout(5.0, connect=3.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        return resp.json()
-
-
-def make_keyboard(labels: dict, scene_buttons: list[str], lang: str) -> InlineKeyboardMarkup:
-    rows = []
-    for key in scene_buttons:
-        text = labels.get(key, key)
-        # book button opens WebApp and has deep link fallback
-        if key == "book":
-            rows.append([
-                InlineKeyboardButton(text=text, web_app=WebAppInfo(url=WEBAPP_URL)),
-            ])
-        else:
-            rows.append([
-                InlineKeyboardButton(text=text, callback_data=f"nav:{key}")
-            ])
-    # utility row: language toggle and back when not start
-    rows.append([
-        InlineKeyboardButton(text=labels.get("language", "Language"), callback_data="lang:toggle"),
-        InlineKeyboardButton(text=labels.get("back", "Back"), callback_data="nav:start"),
-    ])
+def _menu_inline_keyboard(lang: str) -> InlineKeyboardMarkup | None:
+    rows: list[list[InlineKeyboardButton]] = []
+    if TELEGRAM_MINIAPP_URL:
+        rows.append([
+            InlineKeyboardButton(
+                text=i18n.t(lang, "buttons.open_app"),
+                web_app=WebAppInfo(url=TELEGRAM_MINIAPP_URL),
+            )
+        ])
+    if TELEGRAM_BOOKING_URL:
+        rows.append([
+            InlineKeyboardButton(
+                text=i18n.t(lang, "buttons.book"),
+                url=TELEGRAM_BOOKING_URL,
+            )
+        ])
+    if not rows:
+        return None
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _send_menu_hint(
+    message: Message,
+    lang: str,
+    text_key: str = "menu.hint",
+) -> None:
+    reply_markup = _menu_inline_keyboard(lang)
+    await message.answer(
+        i18n.t(lang, text_key),
+        reply_markup=reply_markup,
+        disable_web_page_preview=True,
+    )
 
 
 @dp.message(Command("healthz"))
@@ -161,40 +174,35 @@ async def cmd_language(message: Message) -> None:
     await message.answer(i18n.t(session.lang, "start.choose_language"), reply_markup=lang_kb)
 
 
+@dp.message(Command("book"))
 @dp.message(F.text.in_({"Записаться", "Book a call"}))
 async def on_book(message: Message) -> None:
-    url = f"https://cal.com/{CAL_USERNAME}/{CAL_EVENT_INTRO}"
-    await message.answer(f"Ссылка для записи: {url}")
+    user_id = message.from_user.id if message.from_user else 0
+    session = get_session(user_id)
+    if TELEGRAM_BOOKING_URL:
+        await message.answer(
+            i18n.t(session.lang, "menu.booking_link", url=TELEGRAM_BOOKING_URL),
+            reply_markup=_menu_inline_keyboard(session.lang),
+            disable_web_page_preview=False,
+        )
+    else:
+        await _send_menu_hint(message, session.lang, text_key="menu.booking_unavailable")
 
 
+@dp.message(Command("skills"))
 @dp.message(F.text.in_({"Навыки", "Skills"}))
 async def on_skills(message: Message) -> None:
-    data = await fetch_rules()
-    items = data.get("items", [])
-    if not items:
-        await message.answer("Пока нет данных.")
-        return
-    lines = ["Мои навыки:"]
-    for it in items:
-        title = it.get("title")
-        desc = it.get("desc")
-        tags = it.get("tags") or []
-        tag_str = f" ({', '.join(tags)})" if tags else ""
-        lines.append(f"• {title}{tag_str}" + (f" — {desc}" if desc else ""))
-    await message.answer("\n".join(lines))
+    user_id = message.from_user.id if message.from_user else 0
+    session = get_session(user_id)
+    await _send_menu_hint(message, session.lang)
 
 
+@dp.message(Command("status", "statuses"))
 @dp.message(F.text.in_({"Статусы", "Statuses"}))
 async def on_statuses(message: Message) -> None:
-    data = await fetch_tasks()
-    items = data.get("items", [])
-    if not items:
-        await message.answer("Пока нет задач.")
-        return
-    lines = ["Статусы задач:"]
-    for it in items:
-        lines.append(f"• {it.get('title')} — {it.get('status')}")
-    await message.answer("\n".join(lines))
+    user_id = message.from_user.id if message.from_user else 0
+    session = get_session(user_id)
+    await _send_menu_hint(message, session.lang)
 
 
 @dp.callback_query(F.data.startswith("lang:"))
@@ -213,8 +221,14 @@ async def on_nav(cb: CallbackQuery) -> None:
     target = cb.data.split(":", 1)[1]
     session.scene = target if target in {"start", "about", "services", "cases", "book"} else "start"
     if target == "book":
-        url = f"https://cal.com/{CAL_USERNAME}/{CAL_EVENT_INTRO}"
-        await cb.message.answer(f"{hbold('Cal.com')}: {url}")
+        if TELEGRAM_BOOKING_URL:
+            await cb.message.answer(
+                i18n.t(session.lang, "menu.booking_link", url=TELEGRAM_BOOKING_URL),
+                reply_markup=_menu_inline_keyboard(session.lang),
+                disable_web_page_preview=False,
+            )
+        else:
+            await _send_menu_hint(cb.message, session.lang, text_key="menu.booking_unavailable")
         await cb.answer()
         return
     await cb.answer()
@@ -231,24 +245,6 @@ async def show_scene(cb: CallbackQuery | Message, scene_key: str) -> None:
 
 # In-memory awaiting brief flags
 _awaiting_brief: set[int] = set()
-
-
-def _main_keyboard(lang: str) -> ReplyKeyboardMarkup:
-    web_app = WebAppInfo(url=f"{WEBAPP_URL}/")
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=i18n.t(lang, "buttons.open_app"), web_app=web_app)],
-            [
-                KeyboardButton(text=i18n.t(lang, "buttons.book")),
-                KeyboardButton(text=i18n.t(lang, "buttons.skills")),
-                KeyboardButton(text=i18n.t(lang, "buttons.statuses"))
-            ],
-            [KeyboardButton(text=i18n.t(lang, "buttons.brief"))],
-        ],
-        resize_keyboard=True,
-    )
-
-
 @dp.message(F.text.in_({"Русский", "English"}))
 async def on_language_choice(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
@@ -260,15 +256,19 @@ async def on_language_choice(message: Message) -> None:
         lang = DEFAULT_LANG
     bot_state.set_lang(user_id, lang)
     session.lang = lang
-    await message.answer(i18n.t(lang, "start.confirm_language"), reply_markup=_main_keyboard(lang))
+    await message.answer(
+        i18n.t(lang, "start.confirm_language"),
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    await _send_menu_hint(message, session.lang, text_key="menu.welcome")
 
 
+@dp.message(Command("tz"))
 @dp.message(F.text.func(lambda t: t == i18n.t("ru", "buttons.brief") or t == i18n.t("en", "buttons.brief")))
 async def on_brief_button(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
     session = get_session(user_id)
-    _awaiting_brief.add(user_id)
-    await message.answer(i18n.t(session.lang, "brief.prompt_upload"))
+    await _send_menu_hint(message, session.lang)
 
 
 @dp.message(F.document | F.photo | F.text)
@@ -417,11 +417,15 @@ async def on_any_message(message: Message, bot: Bot) -> None:
     except Exception as e:
         logger.error(f"Failed to create Notion page for brief: {e}")
 
-    await message.answer(i18n.t(session.lang, "brief.received"), reply_markup=_main_keyboard(session.lang))
+    await message.answer(
+        i18n.t(session.lang, "brief.received"),
+        reply_markup=_menu_inline_keyboard(session.lang),
+    )
 
 
 async def main() -> None:
     """Main function with webhook/polling mode support."""
+    _log_menu_configuration()
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     
     try:
