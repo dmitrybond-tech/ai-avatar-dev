@@ -15,7 +15,8 @@
     "welcome": "All set! Use the buttons below to open the miniapp or book a slot.",
     "hint": "Use the buttons below: \"Open miniapp\" or \"Book a slot\".",
     "booking_link": "Tap \"Book a slot\" or open this link: {url}",
-    "booking_unavailable": "The booking button is temporarily unavailable. Contact us to schedule manually."
+    "booking_unavailable": "The booking button is temporarily unavailable. Please message the admin to schedule manually.",
+    "fallback_alert": "Temporary outage. Please message the admin so we can help."
   },
   "brief": {
     "prompt_upload": "Please attach a file (document/photo) and optional text.",

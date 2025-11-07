@@ -64,14 +64,20 @@ notion_client = NotionClient()
 
 MenuLocale = Literal["ru", "en"]
 _empty_menu_warning_logged = False
+FALLBACK_BOOK_CALLBACK = "menu:fallback_book"
+FALLBACK_BUTTON_TEXT = "Book a slot"
 
 
 def _log_menu_configuration() -> None:
-    summary = (
-        f"miniapp_url={'set' if TELEGRAM_MINIAPP_URL else 'empty'}(len:{len(TELEGRAM_MINIAPP_URL)}) "
-        f"booking_url={'set' if TELEGRAM_BOOKING_URL else 'empty'}(len:{len(TELEGRAM_BOOKING_URL)})"
+    miniapp_state = "set" if TELEGRAM_MINIAPP_URL else "empty"
+    booking_state = "set" if TELEGRAM_BOOKING_URL else "empty"
+    logger.info(
+        "menu.config miniapp_url=%s(len:%d) booking_url=%s(len:%d)",
+        miniapp_state,
+        len(TELEGRAM_MINIAPP_URL),
+        booking_state,
+        len(TELEGRAM_BOOKING_URL),
     )
-    logger.info("menu.config %s", summary)
     if not TELEGRAM_MINIAPP_URL:
         logger.warning(
             "menu.button.miniapp.disabled",
@@ -106,6 +112,10 @@ def _ensure_menu_locale(lang: str) -> MenuLocale:
     return "ru" if lang == "ru" else "en"
 
 
+def _has_any_menu_button() -> bool:
+    return bool(TELEGRAM_MINIAPP_URL or TELEGRAM_BOOKING_URL)
+
+
 def build_main_menu(locale: MenuLocale) -> InlineKeyboardMarkup:
     global _empty_menu_warning_logged
 
@@ -124,11 +134,19 @@ def build_main_menu(locale: MenuLocale) -> InlineKeyboardMarkup:
                 url=TELEGRAM_BOOKING_URL,
             )
         ])
-    if not rows:
-        if not _empty_menu_warning_logged:
-            logger.warning("menu.buttons.empty", extra={"envs": ["TELEGRAM_MINIAPP_URL", "TELEGRAM_BOOKING_URL"]})
-            _empty_menu_warning_logged = True
-        return InlineKeyboardMarkup(inline_keyboard=[])
+    if rows:
+        return InlineKeyboardMarkup(inline_keyboard=rows)
+
+    if not _empty_menu_warning_logged:
+        logger.warning("menu.buttons.empty", extra={"envs": ["TELEGRAM_MINIAPP_URL", "TELEGRAM_BOOKING_URL"]})
+        _empty_menu_warning_logged = True
+
+    rows.append([
+        InlineKeyboardButton(
+            text=FALLBACK_BUTTON_TEXT,
+            callback_data=FALLBACK_BOOK_CALLBACK,
+        )
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -136,11 +154,13 @@ async def _send_menu_hint(
     message: Message,
     lang: str,
     text_key: str = "menu.hint",
+    fallback_text_key: str = "menu.booking_unavailable",
 ) -> None:
     locale = _ensure_menu_locale(lang)
     reply_markup = build_main_menu(locale)
+    key_to_use = text_key if _has_any_menu_button() else fallback_text_key
     await message.answer(
-        i18n.t(locale, text_key),
+        i18n.t(locale, key_to_use),
         reply_markup=reply_markup,
         disable_web_page_preview=True,
     )
@@ -280,6 +300,14 @@ async def cmd_menu(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
     session = get_session(user_id)
     await _send_menu_hint(message, session.lang)
+
+
+@dp.callback_query(F.data == FALLBACK_BOOK_CALLBACK)
+async def on_fallback_book(cb: CallbackQuery) -> None:
+    user_id = cb.from_user.id if cb.from_user else 0
+    session = get_session(user_id)
+    locale = _ensure_menu_locale(session.lang)
+    await cb.answer(i18n.t(locale, "menu.fallback_alert"), show_alert=True)
 
 
 @dp.message(Command("debug_menu"))
