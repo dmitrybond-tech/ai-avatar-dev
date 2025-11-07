@@ -11,20 +11,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY apps/miniapp-api/requirements.txt apps/miniapp-api/requirements.txt
-RUN pip install --no-cache-dir -r apps/miniapp-api/requirements.txt
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm -f /tmp/requirements.txt
 
-# Copy all sources (keeps repo structure intact)
-COPY . .
+# Copy service source into staging directory
+COPY . /app/src
 
-# Ensure underscore module is available and overlay explicit underscore package if present
-COPY apps/miniapp_api ./apps/miniapp_api
-
-# Create import-friendly alias to support module path "apps.miniapp_api"
-RUN mkdir -p apps \
-    && cp -r apps/miniapp-api apps/miniapp_api || true \
-    && touch apps/__init__.py \
-    && touch apps/miniapp_api/__init__.py
+# Ensure import-friendly aliases
+RUN mkdir -p apps && \
+    rm -rf apps/miniapp_api && \
+    mv src apps/miniapp_api && \
+    touch apps/__init__.py && \
+    touch apps/miniapp_api/__init__.py
 
 EXPOSE 8080
 
