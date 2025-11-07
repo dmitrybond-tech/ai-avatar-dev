@@ -28,8 +28,8 @@ app.add_middleware(
 try:
     from apps.miniapp_api.routers.public_tasks import router as public_tasks_router
     app.include_router(public_tasks_router, prefix="/api")
-except Exception as e:
-    logging.getLogger(__name__).warning("Failed to include public_tasks router: %s", e.__class__.__name__)
+except Exception:
+    logging.getLogger(__name__).exception("Failed to include public_tasks router")
 
 try:
     from apps.miniapp_api.routers import briefs as briefs_router
@@ -37,8 +37,8 @@ try:
     app.include_router(briefs_router.router)
     if hasattr(briefs_router, "alias_router"):
         app.include_router(briefs_router.alias_router)
-except Exception as e:
-    logging.getLogger(__name__).warning("Failed to include briefs router: %s", e.__class__.__name__)
+except Exception:
+    logging.getLogger(__name__).exception("Failed to include briefs router")
 
 
 @app.get("/healthz")
@@ -65,12 +65,12 @@ try:
     from apps.miniapp_api.routers import skills as skills_router
 
     api = APIRouter(prefix="/api")
-    api.include_router(skills_router.router, tags=["skills"]) 
+    api.include_router(skills_router.router, tags=["skills"])
     app.include_router(api)
 
-    app.include_router(skills_router.router, tags=["skills-compat"]) 
-except Exception as e:
-    logging.getLogger(__name__).warning("Failed to include skills router: %s", e.__class__.__name__)
+    app.include_router(skills_router.router, tags=["skills-compat"])
+except Exception:
+    logging.getLogger(__name__).exception("Failed to include skills router")
 
 # Optional diagnostics endpoint guarded by DEBUG_DIAG=1
 try:
@@ -120,6 +120,6 @@ try:
         sts = _parse_statuses(statuses) or ["In Progress", "Review"]
         client = _notion_client()
         return _query_public_tasks(client, dbid, sts, limit)
-except Exception as e:
-    logging.getLogger(__name__).warning("Failed to register public tasks aliases: %s", e.__class__.__name__)
+except Exception:
+    logging.getLogger(__name__).exception("Failed to register public tasks aliases")
 
