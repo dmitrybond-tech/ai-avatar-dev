@@ -84,6 +84,8 @@ jobs:
           try:
               from apps.miniapp_api.main import app
           except Exception as exc:
+              import traceback
+              traceback.print_exc()
               raise SystemExit(f"Failed to import FastAPI app: {exc}")
 
           paths = {route.path for route in app.routes if isinstance(route, APIRoute)}
