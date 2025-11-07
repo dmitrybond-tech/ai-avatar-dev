@@ -10,6 +10,8 @@ services:
       NOTION_API_KEY: ${NOTION_API_KEY}
       NOTION_SECRET: ${NOTION_SECRET:-}
       NOTION_TIMEOUT: ${NOTION_TIMEOUT:-10}
+      SKILLS_SOURCE: ${SKILLS_SOURCE:-auto}
+      SKILLS_CSV_PATH: ${SKILLS_CSV_PATH:-/app/data/skills.csv}
 
       # Skills DB
       NOTION_DB_SKILLS: ${NOTION_DB_SKILLS}

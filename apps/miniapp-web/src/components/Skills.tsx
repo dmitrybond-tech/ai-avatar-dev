@@ -41,15 +41,18 @@ export function SkillsList() {
           className="p-3 rounded border border-gray-200 text-left active:scale-[0.99]"
           onClick={() => open(s.slug)}
         >
-          <div className="flex items-start gap-2">
-            {s.icon && <span className="text-xl leading-none">{s.icon}</span>}
-            <div className="flex-1">
-              <div className="font-medium">{s.title}</div>
-              {s.short && <div className="text-sm text-gray-600">{s.short}</div>}
-              {s.tags?.length ? (
-                <div className="mt-1 text-xs text-gray-500 truncate">{s.tags.join(', ')}</div>
-              ) : null}
-            </div>
+          <div className="flex flex-col gap-2">
+            <div className="font-medium">{s.title}</div>
+            {s.short ? <div className="text-sm text-gray-600">{s.short}</div> : null}
+            {s.tags?.length ? (
+              <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+                {Array.from(new Set(s.tags)).map((tag) => (
+                  <span key={tag} className="rounded-full bg-gray-100 px-2 py-0.5">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </button>
       ))}

@@ -89,7 +89,7 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto modal-offset-pt bg-black/40 px-4 pb-6"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-offset-pt bg-black/40 px-4 pb-6"
       onClick={onClose}
     >
       <div

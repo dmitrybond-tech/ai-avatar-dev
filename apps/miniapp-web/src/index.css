@@ -9,9 +9,17 @@
 }
 
 @layer utilities {
-  .modal-offset-pt { padding-top: var(--modal-top-offset); }
-  .modal-offset-mt { margin-top: var(--modal-top-offset); }
-  .modal-maxh { max-height: calc(100dvh - var(--modal-top-offset) - 24px); }
+  .modal-offset-pt {
+    padding-top: var(--modal-top-offset);
+  }
+  .modal-offset-mt {
+    margin-top: var(--modal-top-offset);
+  }
+  .modal-maxh {
+    max-height: calc(
+      min(100svh, 100dvh, 100vh) - var(--modal-top-offset) - 24px
+    );
+  }
 }
 
 html, body, #root { height: 100%; }
@@ -30,7 +38,7 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI
   .form-dark .error { color: #fecaca; }
 }
 
-/* Fallback margin for any dialog content that still uses absolute/fixed positioning */
+/* Fallback to catch stragglers; do not double-count when modal-offset-mt is present */
 [data-radix-dialog-content]:not(.modal-offset-mt),
 .headlessui-dialog .modal-content:not(.modal-offset-mt),
 .DialogContent:not(.modal-offset-mt) {

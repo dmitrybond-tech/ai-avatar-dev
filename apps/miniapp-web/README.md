@@ -36,4 +36,4 @@ Notes:
 - Optionally set `VITE_API_BASE_URL` at build-time; empty means same-origin.
 - Telegram init runs on first render via `src/lib/tg.ts`.
 - Static assets emitted to `/assets/` with long caching; SPA routes fallback to `index.html`.
-- **How to tweak modal offset (60px→70px):** edit `--modal-top-offset` in `src/index.css`; all dialogs use the shared `modal-offset-*` utilities so the gap follows suit.
+- **How to tweak the modal gap (60px→70px):** change the `60px` inside `--modal-top-offset` in `src/index.css` (keep the `env(safe-area-inset-top, 0px)` part); every dialog uses the shared `modal-offset-*` utilities so the new gap applies automatically.

@@ -7,7 +7,7 @@ import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Literal, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Literal, Optional, Sequence, Tuple
 
 from notion_client import APIResponseError, Client
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -110,6 +110,8 @@ _TAGS_CANDIDATES = ("Tags", "Tag", "Skills", "Labels")
 _ORDER_CANDIDATES = ("Order", "Priority", "Sort")
 _SLUG_CANDIDATES = ("Slug", "Key", "Code")
 _PUBLISH_FIELDS = ("Publish", "publish")
+_PUBLISH_TRUE = {"true", "yes", "publish", "published", "ready", "on", "enabled", "1"}
+_PUBLISH_FALSE = {"false", "no", "draft", "off", "0", "disabled"}
 
 _CYRILLIC_TRANSLIT = {
     "а": "a",
@@ -194,6 +196,11 @@ def get_skills(lang: Lang = "en") -> List[SkillOut]:
             return skills
         except SkillsSourceError as exc:  # pragma: no cover - configuration/network
             _store_fetch_meta("notion", False, 0, normalized_lang)
+            logger.warning(
+                "skills_source=notion lang=%s count=0 error=%s",
+                normalized_lang,
+                exc,
+            )
             raise SkillsUnavailableError(str(exc)) from exc
 
     # auto mode
@@ -234,10 +241,14 @@ def _resolve_csv_path() -> Path:
     base_api_dir = Path(__file__).resolve().parents[3]
     if configured:
         candidate = Path(configured)
+        if not candidate.is_absolute():
+            if candidate.parts and candidate.parts[0] == "apps" and len(base_api_dir.parents) >= 2:
+                project_root = base_api_dir.parents[1]
+                candidate = (project_root / candidate).resolve()
+            else:
+                candidate = (base_api_dir / candidate).resolve()
     else:
-        candidate = base_api_dir / "data" / "skills.csv"
-    if not candidate.is_absolute():
-        candidate = (base_api_dir / candidate).resolve()
+        candidate = (base_api_dir / "data" / "skills.csv").resolve()
     return candidate
 
 
@@ -259,7 +270,8 @@ def _load_from_csv(lang: Lang) -> List[SkillOut]:
             title = (row.get(title_key) or row.get("Title") or "").strip()
             if not title:
                 logger.warning(
-                    "skills_source=csv row=%d missing_title keys=[%s]",
+                    "skills_source=csv lang=%s row=%d missing_title key=%s",
+                    lang,
                     index,
                     title_key,
                 )
@@ -368,6 +380,87 @@ def _load_from_notion(lang: Lang) -> List[SkillOut]:
     except Exception as exc:  # pragma: no cover - defensive
         logger.error("skills_source=notion error=%s", exc, exc_info=True)
         raise SkillsUnavailableError("Failed to fetch skills from Notion") from exc
+
+
+def _is_published(page: Dict[str, object]) -> bool:
+    props = page.get("properties")
+    if not isinstance(props, dict):
+        return True
+
+    for field in _PUBLISH_FIELDS:
+        prop = props.get(field)
+        if not isinstance(prop, dict):
+            continue
+        value = _publish_property_truthy(prop)
+        if value is not None:
+            return value
+
+    return True
+
+
+def _publish_property_truthy(prop: Dict[str, object]) -> Optional[bool]:
+    prop_type = prop.get("type")
+    if prop_type == "checkbox":
+        checkbox = prop.get("checkbox")
+        if isinstance(checkbox, bool):
+            return checkbox
+        if checkbox is not None:
+            return bool(checkbox)
+        return None
+
+    if prop_type == "select":
+        select = prop.get("select")
+        if isinstance(select, dict):
+            name = select.get("name")
+            if isinstance(name, str):
+                return _coerce_bool(name)
+        return None
+
+    if prop_type == "status":
+        status = prop.get("status")
+        if isinstance(status, dict):
+            name = status.get("name")
+            if isinstance(name, str):
+                return _coerce_bool(name)
+        return None
+
+    if prop_type == "formula":
+        formula = prop.get("formula")
+        if isinstance(formula, dict):
+            formula_type = formula.get("type")
+            if formula_type == "boolean":
+                boolean_value = formula.get("boolean")
+                if isinstance(boolean_value, bool):
+                    return boolean_value
+                if boolean_value is not None:
+                    return bool(boolean_value)
+            if formula_type == "number":
+                number_value = formula.get("number")
+                if isinstance(number_value, (int, float)):
+                    return number_value != 0
+            if formula_type == "string":
+                string_value = formula.get("string")
+                if isinstance(string_value, str):
+                    return _coerce_bool(string_value)
+        return None
+
+    if prop_type in {"rich_text", "title"}:
+        text = _rich_text(prop)
+        if text:
+            return _coerce_bool(text)
+
+    return None
+
+
+def _coerce_bool(value: str) -> Optional[bool]:
+    lowered = value.strip().lower()
+    if not lowered:
+        return None
+    if lowered in _PUBLISH_TRUE:
+        return True
+    if lowered in _PUBLISH_FALSE:
+        return False
+    return None
 
 
 def _notion_page_to_skill(page: Dict[str, object], lang: Lang, index: int) -> SkillOut:

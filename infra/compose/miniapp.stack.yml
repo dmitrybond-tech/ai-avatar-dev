@@ -10,6 +10,10 @@ services:
       - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
       - CAL_HOST=${CAL_HOST:-cal.com}
       - NOTION_TIMEOUT=${NOTION_TIMEOUT:-10}
+      - SKILLS_SOURCE=${SKILLS_SOURCE:-auto}
+      - SKILLS_CSV_PATH=${SKILLS_CSV_PATH:-/app/data/skills.csv}
+      - NOTION_API_KEY=${NOTION_API_KEY:-}
+      - NOTION_DB_SKILLS=${NOTION_DB_SKILLS:-}
       - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]

@@ -4,4 +4,6 @@ services:
       - .env.miniapp
     environment:
       - NOTION_TIMEOUT=${NOTION_TIMEOUT:-10}
+      - SKILLS_SOURCE=${SKILLS_SOURCE:-auto}
+      - SKILLS_CSV_PATH=${SKILLS_CSV_PATH:-/app/data/skills.csv}
 

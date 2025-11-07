@@ -28,12 +28,14 @@ export function TasksModal({ isOpen, onClose }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-offset-pt bg-black/40 px-4 pb-10 sm:pb-12"
+      onClick={onClose}
     >
       <div
-        className="w-full modal-offset-mt modal-maxh overflow-auto rounded-2xl bg-white p-4 shadow-xl focus-visible:outline-none sm:max-w-2xl"
+        className="relative modal-offset-mt modal-maxh w-full overflow-auto rounded-2xl bg-white p-4 shadow-xl focus-visible:outline-none sm:max-w-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="tasks-modal-title"
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between">
           <h2 id="tasks-modal-title" className="text-lg font-semibold">Task Status</h2>

@@ -131,7 +131,7 @@ if settings.debug_skills_api:
             status_code=200,
             content={
                 "resolved_lang": resolved_lang,
-                "source": source,
+                "source": meta.source,
                 "count": meta.count,
             },
         )

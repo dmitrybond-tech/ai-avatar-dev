@@ -53,7 +53,7 @@ class Settings(BaseSettings):
 
     # Skills
     skills_source: str = "auto"
-    skills_csv_path: str = ""
+    skills_csv_path: str = "./data/skills.csv"
     debug_skills_api: bool = False
 
     @property

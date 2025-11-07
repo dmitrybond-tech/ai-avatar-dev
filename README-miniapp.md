@@ -102,6 +102,38 @@ VITE_DEFAULT_LANG=ru
 
 > Never commit secrets. Use `.env` locally and CI/CD secrets in production.
 
+## Skills Data (Notion + CSV fallback)
+- `SKILLS_SOURCE=auto` (default) tries Notion first and falls back to the CSV bundled at `apps/api/data/skills.csv` when Notion is unavailable or misconfigured.
+- `SKILLS_SOURCE=notion` enforces Notion only; the API responds with `503 {"error":"notion_failed"}` if it cannot read the database.
+- `SKILLS_SOURCE=csv` serves the CSV directly and skips Notion entirely. Override `SKILLS_CSV_PATH` when the file lives elsewhere.
+- `NOTION_TIMEOUT` controls the per-request timeout in seconds when Notion is enabled.
+
+### Local FastAPI dev (PowerShell)
+```powershell
+$env:SKILLS_SOURCE = 'csv'
+$env:SKILLS_CSV_PATH = 'apps/api/data/skills.csv'
+pwsh -NoProfile -File .\dev.ps1 api
+```
+
+The CSV lives in `apps/api/data/skills.csv`; keep the path relative to the repo root when running locally.
+
+### Docker Compose
+Add the overrides to your compose env file (for example `infra/compose/.env.miniapp`):
+
+```
+SKILLS_SOURCE=csv
+SKILLS_CSV_PATH=/app/data/skills.csv
+```
+
+Then launch:
+
+```bash
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  --env-file infra/compose/.env.miniapp up -d
+```
+
+Set `SKILLS_SOURCE=auto` again when you want to switch back to Notion.
+
 ## Localization
 - WebApp locale resolves once during startup via `src/shared/i18n/resolveLocale.ts` (order: `?lang` query → `localStorage('app.locale')` → Telegram init data → browser → `VITE_DEFAULT_LANG`). `LocaleProvider` persists the choice and `useLocale()/useI18n()` expose it to components while storing back to `localStorage('app.locale')`.
 - Skills-related fetchers now call the API as `/api/skills?lang=<locale>` and include an `X-Locale` header so the backend can honour the chosen language.
@@ -145,87 +177,4 @@ docker compose -f infra/compose/miniapp.compose.yaml up -d
 ## Flows & i18n
 - YAML lives in `apps/miniapp-api/rules.yaml`
 - Scenes: `start`, `about`, `services`, `cases`
-- Buttons: `book`, `about`, `services`, `cases`, `start`, `back`, `language`
-- API `/rules?lang=ru|en` returns language-projected JSON
-
-## Booking
-- Bot: "Book a call" sends WebApp button and a Cal.com deep link fallback
-- Web: Book button calls `/cal/suggest` then opens URL in external browser
-
-## Health & Reliability
-- API `GET /healthz` → `{ "status": "ok" }`
-- Bot `/healthz` → `ok`
-- Timeouts/retries for API calls in bot via `httpx`
-
-## Troubleshooting
-
-### Reset Webhook
-If the bot is not responding to `/start` commands, the webhook might be set. Reset it:
-
-```bash
-export TG_TOKEN=your_bot_token_here  # not in repo
-curl -s "https://api.telegram.org/bot$TG_TOKEN/getWebhookInfo"
-curl -s "https://api.telegram.org/bot$TG_TOKEN/deleteWebhook?drop_pending_updates=false"
-```
-
-### Runbook
-Deploy with Docker Compose:
-
-```bash
-docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
-  --env-file infra/compose/.env.miniapp up -d --build
-```
-
-### Smoke Test
-Test all endpoints:
-
-```bash
-# API health
-curl -f http://127.0.0.1:8081/healthz
-
-# API skills
-curl -f "http://127.0.0.1:8081/skills?lang=ru"
-
-## Migration: Rules → Skills
-
-- New endpoints:
-  - `GET /skills` — list of skills (supports `?lang=ru|en` to project localized fields)
-  - `GET /skills/{slug}` — detail for a skill (supports `?lang=ru|en`)
-- Backward-compatible aliases (kept during rollout):
-  - `GET /rules` → same payload as `/skills` (200)
-  - `GET /rules/{slug}` → same payload as `/skills/{slug}` (200)
-- Source of truth: Notion DB referenced by `NOTION_DB_SKILLS` (if unset, uses `NOTION_DB` and accepts legacy entries with context "Rules").
-- Fallback seeds: `apps/miniapp-api/seed/skills.en.json` and `skills.ru.json` are merged with Notion; Notion takes precedence.
-
-Smoke tests (prod):
-
-```bash
-curl -sS https://miniapp.dmitrybond.tech/skills | jq '.[0]'
-curl -sS https://miniapp.dmitrybond.tech/skills/automation | jq '.slug'
-curl -sS https://miniapp.dmitrybond.tech/rules | jq '.[0]' # legacy alias
-```
-
-# Web app (should show fallback outside Telegram)
-curl -f http://127.0.0.1:5175/
-```
-
-### Common Issues
-- Telegram WebApp requires public HTTPS; for local dev use tunnels (e.g., Cloudflare Tunnel/Ngrok) and set `WEBAPP_URL`
-- If Vite dev doesn't open externally, use tunnels or run `vite preview` in Compose
-- CORS: API allows specific domains only (production + localhost)
-- Windows: ensure Python 3.12 and Node.js 20+
-- Bot not responding: check webhook status and reset if needed
-
-## Acceptance Test (Manual)
-1. Start API, then Bot, then Web locally
-2. In Telegram chat:
-   - `/start` shows "Привет! Открывай мини-апп 👇" with "Open Mini App" WebApp button
-   - Tap WebApp button → opens Mini App UI with proper Telegram context
-   - Tap "Book a call" → opens `https://cal.com/<CAL_USERNAME>/<CAL_EVENT_INTRO>`
-   - Navigate About/Services/Cases → texts from YAML
-   - `/healthz` replies `ok`; API `/healthz` returns `{status:"ok"}`
-3. Outside Telegram (browser):
-   - Open `https://miniapp.dmitrybond.tech/miniapp/` → shows "Open in Telegram" fallback
-   - Click "Open in Telegram" → redirects to bot
-
-CI: ping to trigger build-and-push-miniapp workflow.
+- Buttons: `book`, `about`, `services`, `cases`, `
