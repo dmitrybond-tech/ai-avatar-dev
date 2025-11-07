@@ -46,6 +46,7 @@ class _FetchMeta:
     source: str = "unknown"
     fallback: bool = False
     count: int = 0
+    lang: Lang = "en"
 
 
 class SkillOut(BaseModel):
@@ -88,37 +89,27 @@ _last_fetch_meta = _FetchMeta()
 _notion_client: Optional[Client] = None
 
 
-_TITLE_PRIMARY: Dict[Lang, Tuple[str, ...]] = {
-    "en": ("Title EN", "Title (EN)", "EN Title"),
-    "ru": ("Title RU", "Title (RU)", "RU Title"),
+_TITLE_ALIASES: Dict[Lang, Tuple[str, ...]] = {
+    "en": ("Title EN", "TitleEn", "Title_EN", "Title", "Name"),
+    "ru": ("Title RU", "TitleRu", "Title_RU", "Title", "Name"),
 }
-_SHORT_PRIMARY: Dict[Lang, Tuple[str, ...]] = {
-    "en": ("Short EN", "Short (EN)", "EN Short"),
-    "ru": ("Short RU", "Short (RU)", "RU Short"),
+_SHORT_ALIASES: Dict[Lang, Tuple[str, ...]] = {
+    "en": ("Short EN", "ShortEn", "Short_EN", "Short"),
+    "ru": ("Short RU", "ShortRu", "Short_RU", "Short"),
 }
-_BULLETS_PRIMARY: Dict[Lang, Tuple[str, ...]] = {
-    "en": ("Bullets EN", "Bullets (EN)", "EN Bullets"),
-    "ru": ("Bullets RU", "Bullets (RU)", "RU Bullets"),
+_BULLETS_ALIASES: Dict[Lang, Tuple[str, ...]] = {
+    "en": ("Bullets EN", "BulletsEn", "Bullets_EN", "Bullets"),
+    "ru": ("Bullets RU", "BulletsRu", "Bullets_RU", "Bullets"),
 }
-_EXAMPLES_PRIMARY: Dict[Lang, Tuple[str, ...]] = {
-    "en": ("Examples EN", "Examples (EN)", "EN Examples"),
-    "ru": ("Examples RU", "Examples (RU)", "RU Examples"),
+_EXAMPLES_ALIASES: Dict[Lang, Tuple[str, ...]] = {
+    "en": ("Examples EN", "ExamplesEn", "Examples_EN", "Examples"),
+    "ru": ("Examples RU", "ExamplesRu", "Examples_RU", "Examples"),
 }
 
-_TITLE_SHARED = ("Title", "Name", "Название")
-_SHORT_SHARED = ("Short", "Summary", "Описание")
-_BULLETS_SHARED = ("Bullets", "Details", "Описание")
-_EXAMPLES_SHARED = ("Examples", "Use Cases", "Примеры")
-
-_TAGS_CANDIDATES = (
-    "Tags",
-    "Tag",
-    "Skill Tags",
-    "Tags EN",
-    "Tags RU",
-)
-_ORDER_CANDIDATES = ("Order", "Sort", "Position")
-_SLUG_CANDIDATES = ("Slug", "slug", "URL", "Link")
+_TAGS_CANDIDATES = ("Tags", "Tag", "Skills", "Labels")
+_ORDER_CANDIDATES = ("Order", "Priority", "Sort")
+_SLUG_CANDIDATES = ("Slug", "Key", "Code")
+_PUBLISH_FIELDS = ("Publish", "publish")
 
 _CYRILLIC_TRANSLIT = {
     "а": "a",
@@ -187,37 +178,46 @@ def get_skills(lang: Lang = "en") -> List[SkillOut]:
 
     if source_mode is SkillsSourceMode.CSV:
         skills = _load_from_csv(normalized_lang)
-        _store_fetch_meta("csv", False, len(skills))
+        _store_fetch_meta("csv", False, len(skills), normalized_lang)
+        logger.info(
+            "skills_source=csv path=%s lang=%s count=%d",
+            _resolve_csv_path(),
+            normalized_lang,
+            len(skills),
+        )
         return skills
 
     if source_mode is SkillsSourceMode.NOTION:
         try:
             skills = _load_from_notion(normalized_lang)
-            _store_fetch_meta("notion", False, len(skills))
+            _store_fetch_meta("notion", False, len(skills), normalized_lang)
             return skills
         except SkillsSourceError as exc:  # pragma: no cover - configuration/network
-            _store_fetch_meta("notion", False, 0)
+            _store_fetch_meta("notion", False, 0, normalized_lang)
             raise SkillsUnavailableError(str(exc)) from exc
 
     # auto mode
     try:
         skills = _load_from_notion(normalized_lang)
-        _store_fetch_meta("notion", False, len(skills))
+        _store_fetch_meta("notion", False, len(skills), normalized_lang)
         return skills
     except SkillsSourceError as exc:
-        logger.warning(
-            "skills_source=fallback_csv reason=%s file=%s",
-            exc,
-            _resolve_csv_path(),
-        )
+        csv_path = _resolve_csv_path()
         skills = _load_from_csv(normalized_lang)
-        _store_fetch_meta("csv", True, len(skills))
+        logger.warning(
+            "skills_source=fallback_csv path=%s lang=%s count=%d reason=%s",
+            csv_path,
+            normalized_lang,
+            len(skills),
+            exc,
+        )
+        _store_fetch_meta("csv", True, len(skills), normalized_lang)
         return skills
 
 
-def _store_fetch_meta(source: str, fallback: bool, count: int) -> None:
+def _store_fetch_meta(source: str, fallback: bool, count: int, lang: Lang) -> None:
     global _last_fetch_meta
-    _last_fetch_meta = _FetchMeta(source=source, fallback=fallback, count=count)
+    _last_fetch_meta = _FetchMeta(source=source, fallback=fallback, count=count, lang=lang)
 
 
 def _resolve_source_mode() -> SkillsSourceMode:
@@ -335,11 +335,13 @@ def _load_from_notion(lang: Lang) -> List[SkillOut]:
             pages = response.get("results", [])
             if isinstance(pages, Iterable):
                 for page in pages:
+                    if not isinstance(page, dict):
+                        continue
+                    if not _is_published(page):
+                        continue
                     index += 1
-                    if isinstance(page, dict):
-                        skill = _notion_page_to_skill(page, lang, index)
-                        if skill is not None:
-                            items.append(skill)
+                    skill = _notion_page_to_skill(page, lang, index)
+                    items.append(skill)
 
             if not response.get("has_more"):
                 break
@@ -350,7 +352,9 @@ def _load_from_notion(lang: Lang) -> List[SkillOut]:
                 break
 
         unique = _ensure_unique_slugs(items)
-        return _sort_skills(unique)
+        sorted_items = _sort_skills(unique)
+        logger.info("skills_source=notion lang=%s count=%d", lang, len(sorted_items))
+        return sorted_items
     except APIResponseError as exc:  # pragma: no cover - network path
         logger.error(
             "skills_source=notion error=%s message=%s request_id=%s",
@@ -359,70 +363,72 @@ def _load_from_notion(lang: Lang) -> List[SkillOut]:
             getattr(exc, "request_id", ""),
         )
         raise SkillsUnavailableError(f"Notion API error: {exc.message}") from exc
+    except SkillsSourceError:
+        raise
     except Exception as exc:  # pragma: no cover - defensive
         logger.error("skills_source=notion error=%s", exc, exc_info=True)
         raise SkillsUnavailableError("Failed to fetch skills from Notion") from exc
 
 
-def _notion_page_to_skill(page: Dict[str, object], lang: Lang, index: int) -> Optional[SkillOut]:
+def _notion_page_to_skill(page: Dict[str, object], lang: Lang, index: int) -> SkillOut:
     props = page.get("properties")
     if not isinstance(props, dict):
-        return None
+        raise SkillsSourceError("Notion page is missing properties")
 
     page_id = str(page.get("id") or "")
-    logs: List[Tuple[str, Sequence[str], Optional[str]]] = []
 
-    other_lang: Lang = "ru" if lang == "en" else "en"
+    title_aliases = _TITLE_ALIASES.get(lang)
+    if not title_aliases:
+        raise SkillsSourceError(f"Unsupported language {lang}")
 
-    title_candidates = list(_TITLE_PRIMARY.get(lang, ()))
-    fallback_title = list(_TITLE_SHARED) + list(_TITLE_PRIMARY.get(other_lang, ()))
-    title, title_used = _pick_text(props, title_candidates, fallback_title, logs, field="title")
-    if not title:
-        logger.warning("skills_source=notion page_id=%s missing_title", page_id)
-        return None
+    title = _extract_text_field(
+        props,
+        title_aliases,
+        field="title",
+        page_id=page_id,
+        lang=lang,
+    )
 
     slug = _extract_slug(props, title)
 
-    short_candidates = list(_SHORT_PRIMARY.get(lang, ()))
-    fallback_short = list(_SHORT_SHARED) + list(_SHORT_PRIMARY.get(other_lang, ()))
-    short, short_used = _pick_text(props, short_candidates, fallback_short, logs, field="short", optional=True)
-    if not short:
-        short = title
+    short_aliases = _SHORT_ALIASES.get(lang, ())
+    short_value = _extract_text_field(
+        props,
+        short_aliases,
+        field="short",
+        page_id=page_id,
+        lang=lang,
+        slug=slug,
+        optional=True,
+    )
+    short = short_value or title
 
-    bullets_candidates = list(_BULLETS_PRIMARY.get(lang, ()))
-    fallback_bullets = list(_BULLETS_SHARED) + list(_BULLETS_PRIMARY.get(other_lang, ()))
-    bullets_text, bullets_used = _pick_text(props, bullets_candidates, fallback_bullets, logs, field="bullets", optional=True)
+    bullets_aliases = _BULLETS_ALIASES.get(lang, ())
+    bullets_text = _extract_text_field(
+        props,
+        bullets_aliases,
+        field="bullets",
+        page_id=page_id,
+        lang=lang,
+        slug=slug,
+        optional=True,
+    )
     bullets = _split_lines(bullets_text)
 
-    examples_candidates = list(_EXAMPLES_PRIMARY.get(lang, ()))
-    fallback_examples = list(_EXAMPLES_SHARED) + list(_EXAMPLES_PRIMARY.get(other_lang, ()))
-    examples_text, examples_used = _pick_text(props, examples_candidates, fallback_examples, logs, field="examples", optional=True)
+    examples_aliases = _EXAMPLES_ALIASES.get(lang, ())
+    examples_text = _extract_text_field(
+        props,
+        examples_aliases,
+        field="examples",
+        page_id=page_id,
+        lang=lang,
+        slug=slug,
+        optional=True,
+    )
     examples = _split_lines(examples_text)
 
     tags = _extract_tags(props)
     order = _extract_order(props)
-
-    for field_name, primary, used in logs:
-        if not primary:
-            continue
-        expected = primary[0] if isinstance(primary, Sequence) and primary else ""
-        if used is None:
-            logger.warning(
-                "skills_source=notion slug=%s page_id=%s field=%s missing_property=%s",
-                slug,
-                page_id,
-                field_name,
-                expected,
-            )
-        elif used not in primary:
-            logger.warning(
-                "skills_source=notion slug=%s page_id=%s field=%s missing_property=%s fallback_property=%s",
-                slug,
-                page_id,
-                field_name,
-                expected,
-                used,
-            )
 
     return SkillOut(
         id=page_id or slug,
@@ -436,29 +442,36 @@ def _notion_page_to_skill(page: Dict[str, object], lang: Lang, index: int) -> Op
     )
 
 
-def _pick_text(
+def _extract_text_field(
     props: Dict[str, Dict[str, object]],
-    primary: Sequence[str],
-    fallback: Sequence[str],
-    logs: List[Tuple[str, Sequence[str], Optional[str]]],
+    candidates: Sequence[str],
     *,
     field: str,
+    page_id: str,
+    lang: Lang,
+    slug: Optional[str] = None,
     optional: bool = False,
-) -> Tuple[str, Optional[str]]:
-    for name in primary:
+) -> str:
+    for name in candidates:
         value = _rich_text(props.get(name))
         if value:
-            return value, name
+            return value
 
-    for name in fallback:
-        value = _rich_text(props.get(name))
-        if value:
-            logs.append((field, primary, name))
-            return value, name
+    logger.warning(
+        "skills_source=notion lang=%s page_id=%s slug=%s field=%s missing_properties=%s",
+        lang,
+        page_id,
+        slug or "",
+        field,
+        ",".join(candidates),
+    )
 
-    if not optional:
-        logs.append((field, primary, None))
-    return "", None
+    if optional:
+        return ""
+
+    raise SkillsSourceError(
+        f"Missing required property '{field}' for Notion page {page_id or 'unknown'}"
+    )
 
 
 def _extract_slug(props: Dict[str, Dict[str, object]], title: str) -> str:
