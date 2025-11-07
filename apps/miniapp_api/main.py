@@ -10,6 +10,8 @@ app = FastAPI(title="Miniapp API", version="1.0.0")
 logger = logging.getLogger("miniapp_api")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
+app.state.skills_config_error = None
+
 # CORS for local dev
 allowed_origins = [
     "https://miniapp.dmitrybond.tech",
@@ -59,6 +61,22 @@ async def log_routes() -> None:
         logger.info("Registered routes (miniapp_api): %s", route_paths)
     except Exception as e:
         logger.debug("Failed to list routes: %s", e.__class__.__name__)
+
+
+@app.on_event("startup")
+async def validate_skills_config() -> None:
+    try:
+        from apps.miniapp_api.core.settings import SettingsError, get_settings
+
+        settings = get_settings()
+        try:
+            settings.ensure_skills_config()
+            app.state.skills_config_error = None
+        except SettingsError as exc:
+            app.state.skills_config_error = str(exc)
+            logger.error("Skills configuration missing: %s", exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Unexpected error while validating skills settings: %s", exc)
 
 # /api prefix and flat paths for compatibility
 try:

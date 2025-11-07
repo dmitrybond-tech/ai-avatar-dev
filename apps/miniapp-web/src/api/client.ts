@@ -15,7 +15,8 @@ export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<Ski
   if (!r.ok) {
     throw new Error(`Failed to load skills (status ${r.status})`);
   }
-  return r.json();
+  const data = await r.json();
+  return Array.isArray(data?.items) ? data.items : [];
 }
 
 export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortSignal): Promise<Skill> {

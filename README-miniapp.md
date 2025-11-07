@@ -108,6 +108,13 @@ VITE_DEFAULT_LANG=ru
 - `SKILLS_SOURCE=csv` serves the CSV directly and skips Notion entirely. Override `SKILLS_CSV_PATH` when the file lives elsewhere.
 - `NOTION_TIMEOUT` controls the per-request timeout in seconds when Notion is enabled.
 
+### Notion schema guidelines for skills
+- Titles are auto-detected via `Title`, `Name`, `Skill`, or `Название` — the API also honours language-specific suffixes like `Title EN`, `Title_RU`, and `TitleRU`.
+- Text fields such as `Short`, `Summary`, `Long`, or `Details` follow the same suffix logic (`base {LANG}`, `base_LANG`, `baseLANG`). Rich-text properties are flattened to plain strings.
+- Bullet lists and examples are read from rich-text properties named `Bullets`, `Bullets EN`, `Examples`, etc.; every line (trimmed of bullets/dashes) becomes an array entry.
+- Optional metadata (`Category`, `Domain`, `Tags`, `Level`, `Order`) is resolved if the Notion property exists (select, multi-select, or number). Missing fields simply default to `null`/`[]`.
+- When renaming columns, keep the base name (e.g. `Short`) and only adjust the suffix — that way, the tolerant matcher keeps working without redeploying the backend.
+
 ### Local FastAPI dev (PowerShell)
 ```powershell
 $env:SKILLS_SOURCE = 'csv'

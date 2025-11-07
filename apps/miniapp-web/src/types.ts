@@ -3,10 +3,13 @@ export type Skill = {
   slug: string;
   title: string;
   short: string;
+  long?: string | null;
   bullets: string[];
   examples: string[];
   tags: string[];
   order?: number | null;
+  category?: string | null;
+  level?: string | null;
 };
 
 export type TaskItem = {
