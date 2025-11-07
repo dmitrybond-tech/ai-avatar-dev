@@ -67,7 +67,7 @@ jobs:
       - name: Install API dependencies for route check
         if: ${{ matrix.service == 'api' }}
         run: |
-          python -m pip install --disable-pip-version-check --no-cache-dir -r apps/miniapp_api/requirements.txt
+          python -m pip install --disable-pip-version-check --no-cache-dir -r apps/miniapp-api/requirements.txt
 
       - name: Verify briefs upload route exists
         if: ${{ matrix.service == 'api' }}
