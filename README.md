@@ -395,6 +395,14 @@ docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.ru
   --env-file infra/compose/.env.miniapp up -d
 ```
 
+### MiniApp Helper Script
+
+```bash
+bash infra/compose/miniapp.sh config
+bash infra/compose/miniapp.sh up api
+bash infra/compose/miniapp.sh exec -T api env | egrep '^TELEGRAM_'
+```
+
 4. **Verify Services**
 
 ```bash

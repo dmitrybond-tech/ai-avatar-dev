@@ -1,0 +1,41 @@
+name: guard-miniapp
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+
+jobs:
+  compose-guards:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/compose
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Render full stack
+        run: |
+          COMPOSE="-f miniapp.compose.yaml -f miniapp.runtime.yml -f miniapp.stack.yml -f miniapp.notion.override.yml -f miniapp.final.override.yml"
+          docker compose $COMPOSE --env-file .env.miniapp.example config > out.yaml
+
+      - name: Assert env_file wiring
+        run: |
+          awk '/^  api:/{flag=1; next} flag && NF==0{exit 1} flag && /env_file:/{exit 0}' out.yaml || { echo "api.env_file missing"; exit 1; }
+          flag=0
+          awk '/^  bot:/{flag=1; next} flag && NF==0{exit 1} flag && /env_file:/{exit 0}' out.yaml || { echo "bot.env_file missing"; exit 1; }
+
+      - name: No placeholder image tags
+        run: |
+          if grep -q 'sha-<commit>' out.yaml; then
+            echo "placeholder image tag detected"
+            exit 1
+          fi
+
+      - name: Sanity check TELEGRAM keys referenced
+        run: |
+          grep -Rq "TELEGRAM_BOT_TOKEN" ../../ || { echo "Missing TELEGRAM_BOT_TOKEN reference"; exit 1; }
+          grep -Rq "TELEGRAM_ADMIN_CHAT_ID" ../../ || { echo "Missing TELEGRAM_ADMIN_CHAT_ID reference"; exit 1; }
+

@@ -1,14 +1,16 @@
 """FastAPI application entry point."""
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+from app.bootstrap_env import ping_telegram_if_strict, validate_env
 from app.core.settings import settings
 from app.core.logging import setup_logging, get_logger
-from app.db.connection import init_db, close_db
-from app.adapters.web import health, chat, chat_ws, voice, telegram, chat_stub
-from app.adapters.web import client_log, public_tasks, briefs
+from app.db.connection import close_db, init_db
+from app.adapters.web import chat, chat_stub, chat_ws, client_log, health, briefs, public_tasks, telegram
 from app.integrations.notion_public_tasks import assert_schema
 
 setup_logging()
@@ -20,10 +22,6 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     logger.info("Starting API server...")
-    # Sanity-check presence of Notion and Telegram env vars without logging secrets
-    import os as _os
-    for k in ("NOTION_API_KEY", "NOTION_PUBLIC_TASKS_DB_ID", "TELEGRAM_BOT_TOKEN", "TELEGRAM_ADMIN_CHAT_ID"):
-        logger.info("%s present=%s", k, bool(_os.getenv(k)))
     await init_db()
     
     # Ensure TTS data directory exists
@@ -52,6 +50,12 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+@app.on_event("startup")
+async def bootstrap_env() -> None:
+    validate_env()
+    ping_telegram_if_strict()
 
 # CORS middleware
 cors_origins = [

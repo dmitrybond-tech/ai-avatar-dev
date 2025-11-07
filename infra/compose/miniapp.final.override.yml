@@ -1,8 +1,10 @@
+x-miniapp-env: &miniapp_env
+  - .env.miniapp
+
 services:
   api:
     working_dir: /app
-    env_file:
-      - .env.miniapp
+    env_file: *miniapp_env
     environment:
       # Notion token(s)
       NOTION_API_KEY: ${NOTION_API_KEY}
@@ -34,6 +36,9 @@ services:
       - --port=8080
       - --proxy-headers
       - --forwarded-allow-ips=*
+
+  bot:
+    env_file: *miniapp_env
 
   web:
     volumes:
