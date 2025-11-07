@@ -682,15 +682,12 @@ docker system prune -a
 
 ## 🔄 CI/CD Pipeline
 
-The GitHub Actions workflow automatically:
+The `CI — Main Images` workflow builds and pushes container images for the miniapp frontend and API whenever we update the default branches.
 
-1. **Build**: Builds Docker images for api, website, telegram
-2. **Push**: Pushes images to GitHub Container Registry (GHCR)
-3. **Deploy**: SSHs to VM and runs `docker compose pull && up -d`
+- **Automatic trigger**: Every push to `main` or `master` runs the workflow and publishes images tagged `:main` and `:${SHA}` to GHCR.
+- **Manual trigger**: Go to **Actions → CI — Main Images → Run workflow**, pick the branch (default is the currently selected branch), and press **Run workflow** to queue a manual build.
 
-**Triggered on:**
-- Push to `main` branch
-- Manual workflow dispatch
+If a service Dockerfile is missing (for example when a component is not part of the repo), the job skips that image without failing the run.
 
 ## 🎨 Customization
 
