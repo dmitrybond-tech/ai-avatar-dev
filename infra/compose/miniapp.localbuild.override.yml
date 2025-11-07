@@ -1,0 +1,13 @@
+services:
+  api:
+    build:
+      context: ../../apps/api
+      dockerfile: Dockerfile
+    image: local/miniapp-api:dev
+
+  web:
+    build:
+      context: ../../apps/miniapp-web
+      dockerfile: Dockerfile
+    image: local/miniapp-web:dev
+
