@@ -1,8 +1,9 @@
 import os
 import logging
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 
 app = FastAPI(title="Miniapp API", version="1.0.0")
@@ -78,17 +79,15 @@ async def validate_skills_config() -> None:
     except Exception as exc:  # noqa: BLE001
         logger.error("Unexpected error while validating skills settings: %s", exc)
 
-# /api prefix and flat paths for compatibility
-try:
-    from apps.miniapp_api.routers import skills as skills_router
+from apps.miniapp_api.routers import skills as skills_router
 
-    api = APIRouter(prefix="/api")
-    api.include_router(skills_router.router, tags=["skills"])
-    app.include_router(api)
+app.include_router(skills_router, prefix="/api")
+app.include_router(skills_router)
 
-    app.include_router(skills_router.router, tags=["skills-compat"])
-except Exception:
-    logging.getLogger(__name__).exception("Failed to include skills router")
+
+@app.get("/api/openapi.json")
+def api_openapi() -> dict:
+    return get_openapi(title=app.title, version="1.0.0", routes=app.routes)
 
 # Optional diagnostics endpoint guarded by DEBUG_DIAG=1
 try:
