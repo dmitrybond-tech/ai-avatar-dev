@@ -1,32 +1,13 @@
 export type Skill = {
+  id: string;
   slug: string;
-  title_en: string;
-  title_ru: string;
-  short_en: string;
-  short_ru: string;
-  icon?: string | null;
-  tags: string[];
-};
-
-export type SkillDetail = Skill & {
-  bullets_en: string[];
-  bullets_ru: string[];
-  examples_en: string[];
-  examples_ru: string[];
-};
-
-// Projected shape when server is called with ?lang=ru|en
-export type ProjectedSkill = {
-  slug: string;
-  title: string;
+  name: string;
   short: string;
-  icon?: string | null;
+  long: string;
   tags: string[];
-};
-
-export type ProjectedSkillDetail = ProjectedSkill & {
-  bullets: string[];
-  examples: string[];
+  category?: string | null;
+  icon?: string | null;
+  order?: number | null;
 };
 
 export type TaskItem = {

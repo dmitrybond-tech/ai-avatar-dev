@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { SkillTile } from '../content/skills/types'
-import { skills as skillsEn } from '../content/skills/en'
-import { skills as skillsRu } from '../content/skills/ru'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getSkills } from '../api/client'
+import { SkillDetailView } from '../components/SkillDetail'
+import type { Skill } from '../types'
 
 type Lang = 'ru' | 'en'
 
@@ -18,20 +18,81 @@ const titles: Record<Lang, string> = {
   en: 'Skills',
 }
 
-const lists: Record<Lang, SkillTile[]> = {
-  en: skillsEn,
-  ru: skillsRu,
+const overlayPadding = 'calc(var(--app-header-height) + var(--modal-offset) + env(safe-area-inset-top, 0px))'
+const modalMaxHeight = 'calc(100vh - var(--app-header-height) - var(--modal-offset) - env(safe-area-inset-top, 0px) - 24px)'
+
+function sortSkills(list: Skill[]): Skill[] {
+  return [...list].sort((a, b) => {
+    const orderA = typeof a.order === 'number' ? a.order : Number.POSITIVE_INFINITY
+    const orderB = typeof b.order === 'number' ? b.order : Number.POSITIVE_INFINITY
+    if (orderA !== orderB) {
+      return orderA - orderB
+    }
+    return a.name.localeCompare(b.name)
+  })
 }
 
 export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail }: SkillsPageProps) {
-  const items = lists[lang] ?? lists.ru
+  const [skills, setSkills] = useState<Skill[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const dialogRef = useRef<HTMLDivElement | null>(null)
 
-  const active = useMemo(() => {
-    if (!selectedSlug) return null
-    return items.find((item) => item.key === selectedSlug) ?? null
-  }, [items, selectedSlug])
+  useEffect(() => {
+    let active = true
+    const controller = new AbortController()
+    setSkills(null)
+    setError(null)
 
-  const [drawerOpen, setDrawerOpen] = useState(() => Boolean(active))
+    getSkills(lang, controller.signal)
+      .then((list) => {
+        if (!active) return
+        setSkills(sortSkills(list))
+      })
+      .catch((err) => {
+        if (!active) return
+        setError(err instanceof Error ? err.message : String(err))
+        setSkills([])
+      })
+
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [lang])
+
+  const activeSkill = useMemo(() => {
+    if (!selectedSlug || !skills?.length) return null
+    return skills.find((item) => item.slug === selectedSlug) ?? null
+  }, [selectedSlug, skills])
+
+  useEffect(() => {
+    setDrawerOpen(Boolean(activeSkill))
+  }, [activeSkill])
+
+  useEffect(() => {
+    if (selectedSlug && skills && !activeSkill) {
+      onCloseDetail()
+    }
+  }, [selectedSlug, skills, activeSkill, onCloseDetail])
+
+  useEffect(() => {
+    if (!drawerOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCloseDetail()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [drawerOpen, onCloseDetail])
+
+  useEffect(() => {
+    if (!drawerOpen) return
+    const node = dialogRef.current
+    node?.focus({ preventScroll: true })
+  }, [drawerOpen])
 
   const handleSelect = useCallback(
     (slug: string) => {
@@ -45,27 +106,67 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
     onCloseDetail()
   }, [onCloseDetail])
 
-  useEffect(() => {
-    setDrawerOpen(Boolean(active))
-  }, [active])
-
-  useEffect(() => {
-    if (selectedSlug && !active) {
-      onCloseDetail()
+  const listContent = useMemo(() => {
+    if (error) {
+      return (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )
     }
-  }, [selectedSlug, active, onCloseDetail])
 
-  useEffect(() => {
-    if (!drawerOpen) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        handleClose()
-      }
+    if (!skills) {
+      return (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="h-24 rounded-2xl bg-gray-100 animate-pulse" />
+          ))}
+        </div>
+      )
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [drawerOpen, handleClose])
+
+    if (!skills.length) {
+      return (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+          {lang === 'ru' ? 'Пока нет навыков для отображения.' : 'No skills are published yet.'}
+        </div>
+      )
+    }
+
+    return (
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {skills.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => handleSelect(item.slug)}
+            className="rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition active:scale-[0.99] hover:-translate-y-0.5 hover:shadow"
+            aria-haspopup="dialog"
+            aria-expanded={activeSkill?.slug === item.slug && drawerOpen}
+          >
+            <div className="flex gap-3">
+              {item.icon ? (
+                <span className="text-2xl leading-none" aria-hidden="true">{item.icon}</span>
+              ) : null}
+              <div className="flex flex-col gap-2">
+                <div className="text-base font-medium text-black">{item.name}</div>
+                <div className="text-sm text-gray-600">{item.short}</div>
+                {item.tags?.length ? (
+                  <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+                    {item.tags.map((tag) => (
+                      <span key={tag} className="rounded-full bg-gray-100 px-2 py-0.5">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </button>
+        ))}
+      </section>
+    )
+  }, [skills, error, lang, handleSelect, activeSkill, drawerOpen])
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-4">
@@ -80,45 +181,23 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
         <h1 className="text-lg font-semibold text-black">{titles[lang]}</h1>
       </header>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {items.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => handleSelect(item.key)}
-            className="rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition active:scale-[0.99] hover:-translate-y-0.5 hover:shadow"
-            aria-haspopup="dialog"
-            aria-expanded={active?.key === item.key && drawerOpen}
-          >
-            <div className="flex flex-col gap-2">
-              <div className="text-base font-medium text-black">{item.title}</div>
-              <div className="text-sm text-gray-600">{item.short}</div>
-              {item.tags?.length ? (
-                <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-                  {item.tags.map((tag) => (
-                    <span key={tag} className="rounded-full bg-gray-100 px-2 py-0.5">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </button>
-        ))}
-      </section>
+      {listContent}
 
-      {drawerOpen && active ? (
+      {drawerOpen && activeSkill ? (
         <div
-          className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex justify-center bg-black/40 px-4 pb-10 backdrop-blur-sm"
+          style={{ paddingTop: overlayPadding, overflowY: 'auto', alignItems: 'flex-start' }}
           role="presentation"
           onClick={handleClose}
         >
           <div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label={active.title}
-            className="relative mx-auto w-full max-w-lg translate-y-0 rounded-t-3xl bg-white p-5 shadow-lg transition sm:bottom-auto sm:mt-24 sm:rounded-3xl"
-            style={{ maxHeight: '80vh' }}
+            aria-label={activeSkill.name}
+            tabIndex={-1}
+            className="relative w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl focus-visible:outline-none"
+            style={{ maxHeight: modalMaxHeight, overflowY: 'auto' }}
             onClick={(event) => event.stopPropagation()}
           >
             <button
@@ -129,22 +208,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
             >
               ×
             </button>
-            <div className="flex flex-col gap-3 overflow-y-auto pr-1" style={{ maxHeight: 'calc(80vh - 3rem)' }}>
-              <div>
-                <div className="text-lg font-semibold text-black">{active.title}</div>
-                <div className="text-sm text-gray-600">{active.short}</div>
-                {active.tags?.length ? (
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
-                    {active.tags.map((tag) => (
-                      <span key={tag} className="rounded-full bg-gray-100 px-2 py-0.5">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              <p className="whitespace-pre-line text-sm leading-relaxed text-gray-800">{active.details}</p>
-            </div>
+            <SkillDetailView skill={activeSkill} />
           </div>
         </div>
       ) : null}

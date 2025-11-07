@@ -1,27 +1,23 @@
 import { apiUrl } from "../lib/apiBase.ts";
-import type { TasksStatusResponse, CalLinkResponse, ChatOut, ProjectedSkill, ProjectedSkillDetail } from "../types";
+import type { TasksStatusResponse, CalLinkResponse, ChatOut, Skill } from "../types";
 
 // New skills endpoints
-export async function getSkills(lang?: 'ru' | 'en'): Promise<ProjectedSkill[]> {
+export async function getSkills(lang?: 'ru' | 'en', signal?: AbortSignal): Promise<Skill[]> {
   const qs = lang ? `?lang=${lang}` : '';
-  const r = await fetch(apiUrl(`/skills${qs}`));
+  const r = await fetch(apiUrl(`/api/skills${qs}`), { signal });
+  if (!r.ok) {
+    throw new Error(`Failed to load skills (status ${r.status})`);
+  }
   return r.json();
 }
 
-export async function getSkillDetail(slug: string, lang?: 'ru' | 'en'): Promise<ProjectedSkillDetail> {
+export async function getSkillDetail(slug: string, lang?: 'ru' | 'en', signal?: AbortSignal): Promise<Skill> {
   const qs = lang ? `?lang=${lang}` : '';
-  const r = await fetch(apiUrl(`/skills/${encodeURIComponent(slug)}${qs}`));
-  if (!r.ok) throw new Error(`Skill ${slug} not found`);
+  const r = await fetch(apiUrl(`/api/skills/${encodeURIComponent(slug)}${qs}`), { signal });
+  if (!r.ok) {
+    throw new Error(`Skill ${slug} not found (status ${r.status})`);
+  }
   return r.json();
-}
-
-// Legacy alias preserved during rollout
-export async function getRules(lang?: 'ru' | 'en'): Promise<{ items: ProjectedSkill[] }> {
-  const qs = lang ? `?lang=${lang}` : '';
-  const r = await fetch(apiUrl(`/rules${qs}`));
-  const items: ProjectedSkill[] = await r.json();
-  // Server returns array for /rules; adapt to old shape
-  return { items };
 }
 
 export async function getTasks(): Promise<TasksStatusResponse> {

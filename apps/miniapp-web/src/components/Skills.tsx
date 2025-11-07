@@ -1,18 +1,24 @@
 import { useEffect, useState } from "react";
 import { getSkills } from "../api/client";
-import type { ProjectedSkill } from "../types";
+import type { Skill } from "../types";
 
 function getLang(): 'ru' | 'en' {
   return (navigator.language || '').toLowerCase().startsWith('ru') ? 'ru' : 'en';
 }
 
 export function SkillsList() {
-  const [items, setItems] = useState<ProjectedSkill[] | null>(null);
+  const [items, setItems] = useState<Skill[] | null>(null);
 
   useEffect(() => {
+    const controller = new AbortController();
     let alive = true;
-    getSkills(getLang()).then((list) => alive && setItems(list)).catch(() => setItems([]));
-    return () => { alive = false };
+    getSkills(getLang(), controller.signal)
+      .then((list) => alive && setItems(list))
+      .catch(() => alive && setItems([]));
+    return () => {
+      alive = false;
+      controller.abort();
+    };
   }, []);
 
   if (!items) {
@@ -31,7 +37,7 @@ export function SkillsList() {
     <div className="grid gap-2">
       {items.map((s) => (
         <button
-          key={s.slug}
+          key={s.id}
           className="p-3 rounded border border-gray-200 text-left active:scale-[0.99]"
           onClick={() => open(s.slug)}
         >

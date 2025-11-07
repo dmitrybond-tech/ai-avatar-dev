@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { PrimaryActions } from './components/Buttons'
 import { TasksModal } from './components/TasksModal'
 import { ChatBox } from './components/Chat'
@@ -67,6 +67,7 @@ export function App() {
   const [route, setRoute] = useState<Route>(initialRoute)
   const [isTasksOpen, setIsTasksOpen] = useState(false)
   const [i18n] = useState(() => createI18n(initialLocale))
+  const headerRef = useRef<HTMLElement | null>(null)
 
   const ensureLang = (candidate: string | null | undefined): Lang => {
     const normalized = normalizeLangCandidate(candidate)
@@ -120,6 +121,34 @@ export function App() {
     }
   }, [route, i18n])
 
+  useLayoutEffect(() => {
+    const target = headerRef.current
+    if (!target) return
+
+    const update = () => {
+      const height = target.getBoundingClientRect().height
+      if (Number.isFinite(height) && height > 0) {
+        document.documentElement.style.setProperty('--app-header-height', `${Math.round(height)}px`)
+      }
+    }
+
+    update()
+
+    let ro: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => update())
+      ro.observe(target)
+    }
+
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('resize', update)
+      if (ro) {
+        ro.disconnect()
+      }
+    }
+  }, [])
+
   // Standalone brief page - render without wrapper
   if (route.name === 'brief') {
     return <BriefFormPage />
@@ -130,7 +159,7 @@ export function App() {
   return (
     <div className="min-h-dvh w-full bg-white text-black">
       <div className="max-w-md mx-auto p-4 grid gap-4">
-        <header className="flex items-center justify-between gap-3">
+        <header ref={headerRef} className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <img
               src="/icons/android-chrome-192x192.png"

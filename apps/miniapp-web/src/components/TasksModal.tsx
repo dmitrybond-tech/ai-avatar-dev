@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { fetchOpenTasks, type PublicTask } from "../shared/api/tasks";
 import TaskCard from "./TaskCard";
 
+const MODAL_TOP_PADDING = "calc(var(--app-header-height) + var(--modal-offset) + env(safe-area-inset-top, 0px))";
+
 type Props = {
   isOpen: boolean;
   onClose: () => void;
@@ -26,10 +28,22 @@ export function TasksModal({ isOpen, onClose }: Props) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center p-4 z-50">
-      <div className="w-full sm:max-w-2xl bg-white rounded-2xl p-4 shadow-xl">
+    <div
+      className="fixed inset-0 z-50 flex justify-center bg-black/40 px-4 pb-10 sm:pb-12"
+      style={{ paddingTop: MODAL_TOP_PADDING, alignItems: "flex-start", overflowY: "auto" }}
+    >
+      <div
+        className="w-full sm:max-w-2xl rounded-2xl bg-white p-4 shadow-xl focus-visible:outline-none"
+        style={{
+          maxHeight: "calc(100vh - var(--app-header-height) - var(--modal-offset) - env(safe-area-inset-top, 0px) - 24px)",
+          overflowY: "auto",
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tasks-modal-title"
+      >
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Task Status</h2>
+          <h2 id="tasks-modal-title" className="text-lg font-semibold">Task Status</h2>
           <button onClick={onClose} className="text-sm px-2 py-1">×</button>
         </div>
 

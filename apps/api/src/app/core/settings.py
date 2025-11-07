@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # Notion
     notion_api_key: str = ""
     notion_public_tasks_db_id: str = ""
+    notion_skills_db_id: str = ""
     notion_timeout: int = 10
 
     @property

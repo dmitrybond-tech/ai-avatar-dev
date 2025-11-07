@@ -10,7 +10,7 @@ from app.bootstrap_env import ping_telegram_if_strict, validate_env
 from app.core.settings import settings
 from app.core.logging import setup_logging, get_logger
 from app.db.connection import close_db, init_db
-from app.adapters.web import chat, chat_stub, chat_ws, client_log, health, briefs, public_tasks, telegram
+from app.adapters.web import chat, chat_stub, chat_ws, client_log, health, briefs, public_tasks, skills, telegram, voice
 from app.integrations.notion_public_tasks import assert_schema
 
 setup_logging()
@@ -35,6 +35,10 @@ async def lifespan(app: FastAPI):
             logger.info("Notion schema validation passed")
         else:
             logger.info("Notion integration not configured (missing API key or DB ID)")
+        if settings.notion_api_key and settings.notion_skills_db_id:
+            logger.info("Notion skills integration enabled")
+        else:
+            logger.warning("Notion skills integration not configured (missing NOTION_API_KEY or NOTION_DB_SKILLS)")
     except Exception as e:
         logger.warning(f"Notion schema validation failed: {e}")
     
@@ -94,6 +98,7 @@ app.include_router(client_log.router, tags=["client-log"])
 app.include_router(public_tasks.router)
 app.include_router(briefs.router)
 app.include_router(briefs.alias_router)
+app.include_router(skills.router)
 
 
 if __name__ == "__main__":
