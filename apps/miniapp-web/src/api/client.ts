@@ -1,19 +1,32 @@
 import { apiUrl } from "../lib/apiBase.ts";
+import type { Locale } from "../shared/i18n/resolveLocale";
 import type { TasksStatusResponse, CalLinkResponse, ChatOut, Skill } from "../types";
 
 // New skills endpoints
-export async function getSkills(lang?: 'ru' | 'en', signal?: AbortSignal): Promise<Skill[]> {
-  const qs = lang ? `?lang=${lang}` : '';
-  const r = await fetch(apiUrl(`/api/skills${qs}`), { signal });
+export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<Skill[]> {
+  const qs = `?lang=${lang}`;
+  const r = await fetch(apiUrl(`/api/skills${qs}`), {
+    signal,
+    headers: {
+      "X-Locale": lang,
+      "Accept-Language": lang,
+    },
+  });
   if (!r.ok) {
     throw new Error(`Failed to load skills (status ${r.status})`);
   }
   return r.json();
 }
 
-export async function getSkillDetail(slug: string, lang?: 'ru' | 'en', signal?: AbortSignal): Promise<Skill> {
-  const qs = lang ? `?lang=${lang}` : '';
-  const r = await fetch(apiUrl(`/api/skills/${encodeURIComponent(slug)}${qs}`), { signal });
+export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortSignal): Promise<Skill> {
+  const qs = `?lang=${lang}`;
+  const r = await fetch(apiUrl(`/api/skills/${encodeURIComponent(slug)}${qs}`), {
+    signal,
+    headers: {
+      "X-Locale": lang,
+      "Accept-Language": lang,
+    },
+  });
   if (!r.ok) {
     throw new Error(`Skill ${slug} not found (status ${r.status})`);
   }

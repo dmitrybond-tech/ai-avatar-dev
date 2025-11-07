@@ -1,46 +1,38 @@
-import en from "../i18n/en.json";
-import ru from "../i18n/ru.json";
+import { useMemo } from "react"
 
-type Locale = "en" | "ru";
-const dict: Record<Locale, any> = { en, ru };
+import en from "../i18n/en.json"
+import ru from "../i18n/ru.json"
 
-export function detectLocale(): Locale {
-  // 1. URLSearchParams (lang)
-  const urlLang = new URLSearchParams(location.search).get("lang");
-  if (urlLang === "ru" || urlLang === "en") return urlLang;
+import { useLocale } from "../shared/i18n/localeContext"
+import type { Locale } from "../shared/i18n/resolveLocale"
 
-  // 2. Telegram WebApp language
-  try {
-    const tg = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.language_code;
-    if (tg && /^ru/i.test(tg)) return "ru";
-  } catch {}
+const dictionaries: Record<Locale, any> = { en, ru }
 
-  // 3. localStorage
-  const saved = localStorage.getItem("locale");
-  if (saved === "ru" || saved === "en") return saved as Locale;
-
-  // 4. navigator.language
-  return /^ru/i.test(navigator.language) ? "ru" : "en";
+function translateInternal(locale: Locale, key: string): string {
+  const parts = key.split(".")
+  let node: any = dictionaries[locale]
+  for (const part of parts) {
+    node = node?.[part]
+  }
+  if (typeof node === "string" && node.length > 0) {
+    return node
+  }
+  return key
 }
 
-export function createI18n(initial?: Locale) {
-  let current: Locale = initial || detectLocale();
-
-  const t = (key: string): string => {
-    const parts = key.split(".");
-    let node: any = dict[current];
-    for (const p of parts) {
-      node = node?.[p];
-    }
-    return (typeof node === "string" && node) || key;
-  };
-
-  const get = () => current;
-  const set = (l: Locale) => {
-    current = l;
-    localStorage.setItem("locale", l);
-  };
-
-  return { t, get, set };
+export function translate(locale: Locale, key: string): string {
+  return translateInternal(locale, key)
 }
+
+export function useI18n() {
+  const [locale, setLocale] = useLocale()
+  const t = useMemo(() => {
+    return (key: string) => translateInternal(locale, key)
+  }, [locale])
+
+  return { locale, setLocale, t }
+}
+
+export type { Locale }
+
 

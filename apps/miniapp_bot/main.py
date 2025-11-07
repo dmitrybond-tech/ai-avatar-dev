@@ -5,6 +5,7 @@ import os
 from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Literal
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
@@ -116,15 +117,32 @@ def _has_any_menu_button() -> bool:
     return bool(TELEGRAM_MINIAPP_URL or TELEGRAM_BOOKING_URL)
 
 
+def _build_miniapp_url(locale: MenuLocale) -> str:
+    if not TELEGRAM_MINIAPP_URL:
+        return ""
+
+    try:
+        parsed = urlparse(TELEGRAM_MINIAPP_URL)
+    except Exception:
+        separator = "&" if "?" in TELEGRAM_MINIAPP_URL else "?"
+        return f"{TELEGRAM_MINIAPP_URL}{separator}lang={locale}"
+
+    query_params = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query_params["lang"] = locale
+    new_query = urlencode(query_params, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
+
+
 def build_main_menu(locale: MenuLocale) -> InlineKeyboardMarkup:
     global _empty_menu_warning_logged
 
     rows: list[list[InlineKeyboardButton]] = []
     if TELEGRAM_MINIAPP_URL:
+        web_app_url = _build_miniapp_url(locale)
         rows.append([
             InlineKeyboardButton(
                 text=i18n.t(locale, "buttons.open_app"),
-                web_app=WebAppInfo(url=TELEGRAM_MINIAPP_URL),
+                web_app=WebAppInfo(url=web_app_url),
             )
         ])
     if TELEGRAM_BOOKING_URL:
@@ -320,6 +338,8 @@ async def cmd_debug_menu(message: Message) -> None:
         "booking_url": "set" if TELEGRAM_BOOKING_URL else "empty",
         "locale": locale,
     }
+    if TELEGRAM_MINIAPP_URL:
+        payload["webapp_url"] = _build_miniapp_url(locale)
     await message.answer(
         json.dumps(payload, ensure_ascii=False),
         reply_markup=build_main_menu(locale),

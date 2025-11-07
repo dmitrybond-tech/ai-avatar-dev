@@ -3,7 +3,7 @@ import { PrimaryActions } from './components/Buttons'
 import { TasksModal } from './components/TasksModal'
 import { ChatBox } from './components/Chat'
 import { BriefFormPage } from './pages/BriefFormPage'
-import { createI18n, detectLocale } from './lib/i18n'
+import { useI18n } from './lib/i18n'
 import { safeInitTelegram } from './lib/telegram'
 import { clientLog } from './lib/clientLog'
 import { SkillsPage } from './pages/SkillsPage'
@@ -60,13 +60,11 @@ function parseRoute(pathname: string): Route {
 
 export function App() {
   const _q = useQuery() // reserved for future
-  const initialPath = window.location.pathname
-  const initialRoute = parseRoute(initialPath)
-  const initialLocale = initialRoute.name === 'skills' ? initialRoute.lang : detectLocale()
+  const { locale, setLocale, t } = useI18n()
+  const initialPath = typeof window !== 'undefined' ? window.location.pathname : '/'
 
-  const [route, setRoute] = useState<Route>(initialRoute)
+  const [route, setRoute] = useState<Route>(() => parseRoute(initialPath))
   const [isTasksOpen, setIsTasksOpen] = useState(false)
-  const [i18n] = useState(() => createI18n(initialLocale))
   const headerRef = useRef<HTMLElement | null>(null)
 
   const ensureLang = (candidate: string | null | undefined): Lang => {
@@ -92,6 +90,9 @@ export function App() {
 
   const goSkills = (lang: Lang, slug?: string | null) => {
     const safeLang = SUPPORTED_LANG_SET.has(lang) ? lang : DEFAULT_LANG
+    if (safeLang !== locale) {
+      setLocale(safeLang)
+    }
     const base = `/${safeLang}/skills`
     const target = slug ? `${base}/${slug}` : base
     goTo(target)
@@ -116,10 +117,10 @@ export function App() {
   }, [route])
 
   useEffect(() => {
-    if (route.name === 'skills') {
-      i18n.set(route.lang)
+    if (route.name === 'skills' && route.lang !== locale) {
+      setLocale(route.lang)
     }
-  }, [route, i18n])
+  }, [locale, route, setLocale])
 
   useLayoutEffect(() => {
     const target = headerRef.current
@@ -154,7 +155,7 @@ export function App() {
     return <BriefFormPage />
   }
 
-  const currentLang = (i18n.get() === 'en' ? 'en' : 'ru') as Lang
+  const currentLang = locale as Lang
 
   return (
     <div className="min-h-dvh w-full bg-white text-black">
@@ -168,7 +169,7 @@ export function App() {
               loading="eager"
               decoding="async"
             />
-            <div className="font-semibold">{i18n.t('header.title')}</div>
+            <div className="font-semibold">{t('header.title')}</div>
           </div>
           <a
             href="https://dmitrybond.tech"
@@ -176,7 +177,7 @@ export function App() {
             rel="noopener noreferrer"
             className="px-3 py-1 text-sm rounded-md border border-gray-300 hover:bg-gray-50"
           >
-            {i18n.t('header.personalSite')}
+            {t('header.personalSite')}
           </a>
         </header>
         {route.name === 'home' && (

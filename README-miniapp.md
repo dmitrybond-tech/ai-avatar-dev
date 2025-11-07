@@ -102,6 +102,15 @@ VITE_DEFAULT_LANG=ru
 
 > Never commit secrets. Use `.env` locally and CI/CD secrets in production.
 
+## Localization
+- WebApp locale resolves once during startup via `src/shared/i18n/resolveLocale.ts` (order: `?lang` query → `localStorage('app.locale')` → Telegram init data → browser → `VITE_DEFAULT_LANG`). `LocaleProvider` persists the choice and `useLocale()/useI18n()` expose it to components while storing back to `localStorage('app.locale')`.
+- Skills-related fetchers now call the API as `/api/skills?lang=<locale>` and include an `X-Locale` header so the backend can honour the chosen language.
+- The Telegram bot keeps each user’s language in its state store and injects `?lang=<locale>` into the WebApp button URL every time keyboards are rendered, so the miniapp opens in the same language the user picked in chat.
+
+## Locale Debugging
+- Use the `/debug_menu` command in the bot to inspect the current locale and the exact WebApp URL (including the `lang` query) while still showing the two-button menu.
+- When `DEBUG_SKILLS_API=true`, `GET /api/skills/_debug` returns `{ resolved_lang, source, count }` to verify how the API inferred the locale and how many skills were served.
+
 ## Dev (Windows / PowerShell)
 From repo root:
 

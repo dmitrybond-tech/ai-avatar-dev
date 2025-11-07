@@ -1,13 +1,14 @@
 """Skills router backed by provider with graceful fallbacks."""
 from __future__ import annotations
 
-from typing import List, Union
+from typing import List, Tuple, Union
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from app.core.settings import settings
+from app.core.logging import get_logger
 from app.providers.skills import (
     SkillOut,
     SkillsSourceMode,
@@ -18,12 +19,47 @@ from app.providers.skills import (
 
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
+logger = get_logger(__name__)
 
 
-def _normalize_lang(value: str | None) -> str:
-    if isinstance(value, str) and value.strip().lower() == "ru":
+def _normalize_lang(value: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    lowered = value.strip().lower()
+    if not lowered:
+        return None
+    if lowered.startswith("ru"):
         return "ru"
-    return "en"
+    if lowered.startswith("en"):
+        return "en"
+    return None
+
+
+def _parse_accept_language(header_value: str | None) -> str | None:
+    if not header_value:
+        return None
+    for chunk in header_value.split(","):
+        lang_token = chunk.split(";", 1)[0].strip()
+        normalized = _normalize_lang(lang_token)
+        if normalized:
+            return normalized
+    return None
+
+
+def _resolve_request_lang(request: Request, lang_param: str | None) -> Tuple[str, str]:
+    candidate = _normalize_lang(lang_param)
+    if candidate:
+        return candidate, "query"
+
+    header_candidate = _normalize_lang(request.headers.get("X-Locale"))
+    if header_candidate:
+        return header_candidate, "header"
+
+    accept_candidate = _parse_accept_language(request.headers.get("Accept-Language"))
+    if accept_candidate:
+        return accept_candidate, "accept"
+
+    return "en", "default"
 
 
 def _resolve_source_mode() -> SkillsSourceMode:
@@ -36,9 +72,11 @@ def _resolve_source_mode() -> SkillsSourceMode:
 
 @router.get("", response_model=List[SkillOut])
 async def list_skills(
-    lang: str = Query("en", pattern="^(?:en|ru|EN|RU)$", description="Locale code"),
+    request: Request,
+    lang: str | None = Query(None, pattern="^(?:en|ru|EN|RU)$", description="Locale code"),
 ) -> Union[List[SkillOut], JSONResponse]:
-    normalized_lang = _normalize_lang(lang)
+    normalized_lang, source = _resolve_request_lang(request, lang)
+    logger.debug("skills.lang.resolve", extra={"resolved": normalized_lang, "source": source})
     source_mode = _resolve_source_mode()
 
     try:
@@ -53,10 +91,15 @@ async def list_skills(
 
 @router.get("/{slug}", response_model=SkillOut)
 async def get_skill(
+    request: Request,
     slug: str,
-    lang: str = Query("en", pattern="^(?:en|ru|EN|RU)$", description="Locale code"),
+    lang: str | None = Query(None, pattern="^(?:en|ru|EN|RU)$", description="Locale code"),
 ) -> Union[SkillOut, JSONResponse]:
-    normalized_lang = _normalize_lang(lang)
+    normalized_lang, source = _resolve_request_lang(request, lang)
+    logger.debug(
+        "skills.lang.resolve.detail",
+        extra={"resolved": normalized_lang, "source": source, "slug": slug},
+    )
 
     source_mode = _resolve_source_mode()
 
@@ -78,12 +121,20 @@ async def get_skill(
 if settings.debug_skills_api:
 
     @router.get("/_debug")
-    async def debug_skills() -> JSONResponse:
+    async def debug_skills(
+        request: Request,
+        lang: str | None = Query(None, pattern="^(?:en|ru|EN|RU)$", description="Locale code"),
+    ) -> JSONResponse:
+        resolved_lang, source = _resolve_request_lang(request, lang)
         meta = get_last_fetch_meta()
-        source = meta.source
-        if meta.fallback and source == "csv":
-            source = "auto(notion→csv)"
-        return JSONResponse(status_code=200, content={"source": source, "count": meta.count})
+        return JSONResponse(
+            status_code=200,
+            content={
+                "resolved_lang": resolved_lang,
+                "source": source,
+                "count": meta.count,
+            },
+        )
 
 
 

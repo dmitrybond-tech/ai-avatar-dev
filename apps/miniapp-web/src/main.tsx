@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import './styles.css'
 import { App } from './App'
+import { LocaleProvider } from './shared/i18n/localeContext'
 import { safeInitTelegram } from './lib/telegram'
 import { clientLog } from './lib/clientLog'
 
@@ -27,6 +28,8 @@ window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
 
 ReactDOM.createRoot(rootEl).render(
   <React.StrictMode>
-    <App />
+    <LocaleProvider>
+      <App />
+    </LocaleProvider>
   </React.StrictMode>,
 )

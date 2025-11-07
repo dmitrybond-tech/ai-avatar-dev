@@ -192,7 +192,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
 
       {drawerOpen && activeSkill ? (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 pb-10 pt-[var(--modal-top-offset)] backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-offset-pt bg-black/40 px-4 pb-10 backdrop-blur-sm"
           role="presentation"
           onClick={handleClose}
         >
@@ -202,7 +202,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
             aria-modal="true"
             aria-label={activeSkill.title}
             tabIndex={-1}
-            className="relative w-full max-h-[calc(100dvh_-_var(--modal-top-offset)_-_24px)] overflow-y-auto max-w-lg rounded-3xl bg-white p-5 shadow-xl focus-visible:outline-none"
+            className="relative modal-offset-mt modal-maxh w-full overflow-auto max-w-lg rounded-3xl bg-white p-5 shadow-xl focus-visible:outline-none"
             onClick={(event) => event.stopPropagation()}
           >
             <button

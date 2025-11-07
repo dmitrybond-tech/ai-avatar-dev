@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { normalizeCalLink } from "../shared/cal";
-import { createI18n } from "../lib/i18n";
+import { useI18n } from "../lib/i18n";
 import { EmbedBriefPanel } from "./EmbedBriefPanel";
 
 type Props = {
@@ -9,17 +9,12 @@ type Props = {
   onTasks: () => void;
 };
 
-const i18n = createI18n();
-
 export function PrimaryActions({ lang, onSkills, onTasks }: Props) {
+  const { t } = useI18n();
   const calLink = normalizeCalLink(
     import.meta.env.VITE_CAL_LINK || "dmitrybond/intro-30m"
   );
   const [briefOpen, setBriefOpen] = useState(false);
-
-  useEffect(() => {
-    i18n.set(lang);
-  }, [lang]);
 
   useEffect(() => {
     try {
@@ -38,22 +33,22 @@ export function PrimaryActions({ lang, onSkills, onTasks }: Props) {
           data-cal-namespace="booking"
           data-cal-config='{"layout":"month_view","theme":"auto"}'
         >
-          {i18n.t("actions.bookCall")}
+          {t("actions.bookCall")}
         </button>
         <button
           className="h-12 rounded bg-gray-100 hover:bg-gray-200"
           onClick={() => setBriefOpen(true)}
         >
-          {i18n.t("actions.brief")}
+          {t("actions.brief")}
         </button>
         <button
           className="h-12 rounded bg-gray-100 hover:bg-gray-200"
           onClick={() => onSkills(lang)}
         >
-          {i18n.t("actions.whatICanDo")}
+          {t("actions.whatICanDo")}
         </button>
         <button className="h-12 rounded bg-gray-100 hover:bg-gray-200" onClick={onTasks}>
-          {i18n.t("actions.taskStatus")}
+          {t("actions.taskStatus")}
         </button>
       </div>
       <EmbedBriefPanel open={briefOpen} lang={lang} onClose={() => setBriefOpen(false)} />

@@ -27,10 +27,10 @@ export function TasksModal({ isOpen, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 pb-10 pt-[var(--modal-top-offset)] sm:pb-12"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-offset-pt bg-black/40 px-4 pb-10 sm:pb-12"
     >
       <div
-        className="w-full max-h-[calc(100dvh_-_var(--modal-top-offset)_-_24px)] overflow-y-auto rounded-2xl bg-white p-4 shadow-xl focus-visible:outline-none sm:max-w-2xl"
+        className="w-full modal-offset-mt modal-maxh overflow-auto rounded-2xl bg-white p-4 shadow-xl focus-visible:outline-none sm:max-w-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="tasks-modal-title"

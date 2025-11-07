@@ -8,6 +8,12 @@
   /* To switch to a 70px top offset, change 60px to 70px in the calc above. */
 }
 
+@layer utilities {
+  .modal-offset-pt { padding-top: var(--modal-top-offset); }
+  .modal-offset-mt { margin-top: var(--modal-top-offset); }
+  .modal-maxh { max-height: calc(100dvh - var(--modal-top-offset) - 24px); }
+}
+
 html, body, #root { height: 100%; }
 body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
 
@@ -22,5 +28,16 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI
   .form-dark textarea::placeholder { color: rgba(255, 255, 255, 0.7); }
   .form-dark .hint { color: rgba(255, 255, 255, 0.7); }
   .form-dark .error { color: #fecaca; }
+}
+
+/* Fallback margin for any dialog content that still uses absolute/fixed positioning */
+[data-radix-dialog-content]:not(.modal-offset-mt),
+.headlessui-dialog .modal-content:not(.modal-offset-mt),
+.DialogContent:not(.modal-offset-mt) {
+  margin-top: var(--modal-top-offset) !important;
+}
+
+.modal-offset-pt > .modal-offset-mt {
+  margin-top: 0;
 }
 

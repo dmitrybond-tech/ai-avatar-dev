@@ -35,8 +35,8 @@ export function EmbedBriefPanel({ open, lang, onClose }: Props) {
   const src = `/brief?embed=1&lang=${lang}`;
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black/50 flex">
-      <div className="relative w-full h-full bg-white dark:bg-zinc-900">
+    <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto modal-offset-pt bg-black/50 px-4 pb-6">
+      <div className="relative modal-offset-mt modal-maxh h-full w-full overflow-hidden bg-white dark:bg-zinc-900">
         <button
           aria-label="Close"
           className="absolute right-3 top-3 z-[71] rounded-md px-2 py-1 bg-black text-white dark:bg-white dark:text-black hover:opacity-80"

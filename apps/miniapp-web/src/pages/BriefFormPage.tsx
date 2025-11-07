@@ -1,5 +1,5 @@
 import React, { useRef, useState, useMemo, useEffect } from "react";
-import { createI18n, detectLocale } from "../lib/i18n";
+import { useI18n } from "../lib/i18n";
 import { submitBriefUpload } from "../features/upload/upload";
 
 const ACCEPT = "image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,application/zip,application/x-zip-compressed";
@@ -71,8 +71,14 @@ export function BriefFormPage() {
   const embedMode = urlParams.get("embed") === "1";
   const themeParam = urlParams.get("theme");
   
-  const initialLocale = langParam === "ru" || langParam === "en" ? langParam : detectLocale();
-  const [i18n] = useState(() => createI18n(initialLocale));
+  const { locale, setLocale, t } = useI18n();
+
+  useEffect(() => {
+    const normalized = langParam === "ru" || langParam === "en" ? langParam : null;
+    if (normalized && normalized !== locale) {
+      setLocale(normalized);
+    }
+  }, [langParam, locale, setLocale]);
 
   // Apply theme if specified
   useEffect(() => {
@@ -102,7 +108,7 @@ export function BriefFormPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("locale", i18n.get());
+      fd.append("locale", locale);
       fd.append("name", form.name.trim());
       fd.append("company", form.company.trim());
       fd.append("phone", phoneSanitized);
@@ -112,17 +118,17 @@ export function BriefFormPage() {
       }
 
       const result = await submitBriefUpload(fd);
-      const parts = [i18n.t("brief.success")];
+      const parts = [t("brief.success")];
       if (result.filename) parts.push(result.filename);
       if (result.telegram_sent === false) {
-        parts.push(i18n.get() === "ru" ? "Telegram не настроен — файл сохранён." : "Telegram delivery skipped; file stored.");
+        parts.push(locale === "ru" ? "Telegram не настроен — файл сохранён." : "Telegram delivery skipped; file stored.");
       }
       setSubmitStatus({ type: "success", message: parts.join(" • ") });
       setForm({ name: "", company: "", phone: "", email: "", message: "" });
       setFile(null);
       if (fileRef.current) fileRef.current.value = "";
     } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : i18n.t("brief.error");
+      const errorMsg = e instanceof Error ? e.message : t("brief.error");
       setSubmitStatus({ type: "error", message: errorMsg });
     } finally {
       setBusy(false);
@@ -134,7 +140,7 @@ export function BriefFormPage() {
       <div className="max-w-2xl mx-auto">
         {!embedMode && (
           <header className="mb-6">
-            <h1 className="text-2xl font-semibold dark:text-white">{i18n.t("brief.title")}</h1>
+            <h1 className="text-2xl font-semibold dark:text-white">{t("brief.title")}</h1>
           </header>
         )}
 
@@ -164,7 +170,7 @@ export function BriefFormPage() {
           >
             <label className="block">
               <span className="block mb-1 text-sm font-medium dark:text-white">
-                {i18n.get() === "ru" ? "Имя" : "Name"} <span className="text-red-500">*</span>
+                {locale === "ru" ? "Имя" : "Name"} <span className="text-red-500">*</span>
               </span>
               <input
                 type="text"
@@ -176,14 +182,14 @@ export function BriefFormPage() {
                   setForm({ ...form, name: e.target.value });
                   setSubmitStatus(null);
                 }}
-                placeholder={i18n.get() === "ru" ? "Ваше имя" : "Your name"}
+                placeholder={locale === "ru" ? "Ваше имя" : "Your name"}
                 aria-invalid={!form.name && form.name !== ""}
               />
             </label>
 
             <label className="block">
               <span className="block mb-1 text-sm font-medium dark:text-white">
-                {i18n.get() === "ru" ? "Компания" : "Company"} <span className="text-red-500">*</span>
+                {locale === "ru" ? "Компания" : "Company"} <span className="text-red-500">*</span>
               </span>
               <input
                 type="text"
@@ -195,14 +201,14 @@ export function BriefFormPage() {
                   setForm({ ...form, company: e.target.value });
                   setSubmitStatus(null);
                 }}
-                placeholder={i18n.get() === "ru" ? "Название компании" : "Company name"}
+                placeholder={locale === "ru" ? "Название компании" : "Company name"}
                 aria-invalid={!form.company && form.company !== ""}
               />
             </label>
 
             <label className="block">
               <span className="block mb-1 text-sm font-medium dark:text-white">
-                {i18n.get() === "ru" ? "Телефон" : "Phone"} <span className="text-red-500">*</span>
+                {locale === "ru" ? "Телефон" : "Phone"} <span className="text-red-500">*</span>
               </span>
               <input
                 type="tel"
@@ -215,13 +221,13 @@ export function BriefFormPage() {
                   setForm({ ...form, phone: e.target.value });
                   setSubmitStatus(null);
                 }}
-                placeholder={i18n.get() === "ru" ? "+7 999 123-45-67" : "+1 555 000 1234"}
+                placeholder={locale === "ru" ? "+7 999 123-45-67" : "+1 555 000 1234"}
                 aria-invalid={!phoneValid && form.phone !== ""}
                 aria-describedby={!phoneValid && form.phone ? "phone-error" : undefined}
               />
               {!phoneValid && form.phone && (
                 <p id="phone-error" className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-                  {i18n.get() === "ru" ? "Проверьте номер" : "Check phone format"}
+                  {locale === "ru" ? "Проверьте номер" : "Check phone format"}
                 </p>
               )}
             </label>
@@ -247,14 +253,14 @@ export function BriefFormPage() {
               />
               {!emailValid && form.email && (
                 <p id="email-error" className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-                  {i18n.get() === "ru" ? "Проверьте email" : "Check email"}
+                  {locale === "ru" ? "Проверьте email" : "Check email"}
                 </p>
               )}
             </label>
 
             <label className="block">
               <span className="block mb-1 text-sm font-medium dark:text-white">
-                {i18n.get() === "ru" ? "Комментарий (необязательно)" : "Comment (optional)"}
+                {locale === "ru" ? "Комментарий (необязательно)" : "Comment (optional)"}
               </span>
               <textarea
                 className="w-full rounded-md border border-gray-300 dark:border-zinc-700 px-3 py-2 bg-white dark:bg-zinc-800 dark:text-white placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white resize-y"
@@ -264,13 +270,13 @@ export function BriefFormPage() {
                   setForm({ ...form, message: e.target.value });
                   setSubmitStatus(null);
                 }}
-                placeholder={i18n.get() === "ru" ? "Коротко о задаче..." : "Short description..."}
+                placeholder={locale === "ru" ? "Коротко о задаче..." : "Short description..."}
               />
             </label>
 
             <label className="block">
               <span className="block mb-1 text-sm font-medium dark:text-white">
-                {i18n.get() === "ru" ? "Файл" : "File"} <span className="text-red-500">*</span>
+                {locale === "ru" ? "Файл" : "File"} <span className="text-red-500">*</span>
               </span>
               <input
                 ref={fileRef}
@@ -283,13 +289,13 @@ export function BriefFormPage() {
                 className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-black file:text-white hover:file:bg-gray-800 dark:file:bg-white dark:file:text-black dark:hover:file:bg-gray-200"
               />
               <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                {i18n.get() === "ru"
+                {locale === "ru"
                   ? "Поддерживаются: изображения, PDF, DOC/DOCX, TXT, ZIP"
                   : "Supported: images, PDF, DOC/DOCX, TXT, ZIP"}
               </p>
               {file && (
                 <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-                  {i18n.get() === "ru" ? "Выбран файл: " : "Selected: "}
+                  {locale === "ru" ? "Выбран файл: " : "Selected: "}
                   <span className="font-medium">{file.name}</span>
                 </p>
               )}
@@ -307,14 +313,14 @@ export function BriefFormPage() {
                 disabled={busy}
                 className="px-4 py-2 rounded-md border border-gray-300 dark:border-zinc-700 dark:text-white hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50"
               >
-                {i18n.t("brief.cancel")}
+                {t("brief.cancel")}
               </button>
               <button
                 type="submit"
                 disabled={!isReady}
                 className="px-4 py-2 rounded-md bg-black dark:bg-white text-white dark:text-black font-medium hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {busy ? (i18n.get() === "ru" ? "Отправка..." : "Sending...") : i18n.t("brief.send")}
+                {busy ? (locale === "ru" ? "Отправка..." : "Sending...") : t("brief.send")}
               </button>
             </div>
           </form>
