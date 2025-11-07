@@ -7,14 +7,14 @@
     "language": "Language",
     "brief": "📎 Brief for estimate",
     "open_app": "Open miniapp",
-    "book": "Book a call",
+    "book": "Book a slot",
     "skills": "Skills",
     "statuses": "Statuses"
   },
   "menu": {
-    "welcome": "All set! Use the buttons below to open the miniapp or book a call.",
-    "hint": "Use the buttons below: \"Open miniapp\" or \"Book a call\".",
-    "booking_link": "Tap \"Book a call\" or open this link: {url}",
+    "welcome": "All set! Use the buttons below to open the miniapp or book a slot.",
+    "hint": "Use the buttons below: \"Open miniapp\" or \"Book a slot\".",
+    "booking_link": "Tap \"Book a slot\" or open this link: {url}",
     "booking_unavailable": "The booking button is temporarily unavailable. Contact us to schedule manually."
   },
   "brief": {

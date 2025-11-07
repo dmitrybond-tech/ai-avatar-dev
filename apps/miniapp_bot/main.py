@@ -1,8 +1,10 @@
 import asyncio
+import json
 import logging
 import os
 from contextlib import suppress
 from datetime import datetime, timezone
+from typing import Literal
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
@@ -60,17 +62,16 @@ i18n = I18N(locales_dir=_locales_dir, default_lang=DEFAULT_LANG, supported_langs
 bot_state = UserStateStore(base_dir="/data/state")
 notion_client = NotionClient()
 
+MenuLocale = Literal["ru", "en"]
+_empty_menu_warning_logged = False
+
 
 def _log_menu_configuration() -> None:
-    logger.info(
-        "menu.config",
-        extra={
-            "miniapp_button_enabled": bool(TELEGRAM_MINIAPP_URL),
-            "miniapp_url_len": len(TELEGRAM_MINIAPP_URL),
-            "booking_button_enabled": bool(TELEGRAM_BOOKING_URL),
-            "booking_url_len": len(TELEGRAM_BOOKING_URL),
-        },
+    summary = (
+        f"miniapp_url={'set' if TELEGRAM_MINIAPP_URL else 'empty'}(len:{len(TELEGRAM_MINIAPP_URL)}) "
+        f"booking_url={'set' if TELEGRAM_BOOKING_URL else 'empty'}(len:{len(TELEGRAM_BOOKING_URL)})"
     )
+    logger.info("menu.config %s", summary)
     if not TELEGRAM_MINIAPP_URL:
         logger.warning(
             "menu.button.miniapp.disabled",
@@ -101,24 +102,33 @@ def get_session(user_id: int) -> SessionState:
     return state
 
 
-def _menu_inline_keyboard(lang: str) -> InlineKeyboardMarkup | None:
+def _ensure_menu_locale(lang: str) -> MenuLocale:
+    return "ru" if lang == "ru" else "en"
+
+
+def build_main_menu(locale: MenuLocale) -> InlineKeyboardMarkup:
+    global _empty_menu_warning_logged
+
     rows: list[list[InlineKeyboardButton]] = []
     if TELEGRAM_MINIAPP_URL:
         rows.append([
             InlineKeyboardButton(
-                text=i18n.t(lang, "buttons.open_app"),
+                text=i18n.t(locale, "buttons.open_app"),
                 web_app=WebAppInfo(url=TELEGRAM_MINIAPP_URL),
             )
         ])
     if TELEGRAM_BOOKING_URL:
         rows.append([
             InlineKeyboardButton(
-                text=i18n.t(lang, "buttons.book"),
+                text=i18n.t(locale, "buttons.book"),
                 url=TELEGRAM_BOOKING_URL,
             )
         ])
     if not rows:
-        return None
+        if not _empty_menu_warning_logged:
+            logger.warning("menu.buttons.empty", extra={"envs": ["TELEGRAM_MINIAPP_URL", "TELEGRAM_BOOKING_URL"]})
+            _empty_menu_warning_logged = True
+        return InlineKeyboardMarkup(inline_keyboard=[])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -127,9 +137,10 @@ async def _send_menu_hint(
     lang: str,
     text_key: str = "menu.hint",
 ) -> None:
-    reply_markup = _menu_inline_keyboard(lang)
+    locale = _ensure_menu_locale(lang)
+    reply_markup = build_main_menu(locale)
     await message.answer(
-        i18n.t(lang, text_key),
+        i18n.t(locale, text_key),
         reply_markup=reply_markup,
         disable_web_page_preview=True,
     )
@@ -160,6 +171,7 @@ async def cmd_start(message: Message) -> None:
         one_time_keyboard=True,
     )
     await message.answer(i18n.t(lang, "start.choose_language"), reply_markup=lang_kb)
+    await _send_menu_hint(message, session.lang)
 
 
 @dp.message(Command("language"))
@@ -175,14 +187,14 @@ async def cmd_language(message: Message) -> None:
 
 
 @dp.message(Command("book"))
-@dp.message(F.text.in_({"Записаться", "Book a call"}))
+@dp.message(F.text.in_({"Записаться", "Book a slot", "Book a call"}))
 async def on_book(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
     session = get_session(user_id)
     if TELEGRAM_BOOKING_URL:
         await message.answer(
             i18n.t(session.lang, "menu.booking_link", url=TELEGRAM_BOOKING_URL),
-            reply_markup=_menu_inline_keyboard(session.lang),
+            reply_markup=build_main_menu(_ensure_menu_locale(session.lang)),
             disable_web_page_preview=False,
         )
     else:
@@ -224,7 +236,7 @@ async def on_nav(cb: CallbackQuery) -> None:
         if TELEGRAM_BOOKING_URL:
             await cb.message.answer(
                 i18n.t(session.lang, "menu.booking_link", url=TELEGRAM_BOOKING_URL),
-                reply_markup=_menu_inline_keyboard(session.lang),
+                reply_markup=build_main_menu(_ensure_menu_locale(session.lang)),
                 disable_web_page_preview=False,
             )
         else:
@@ -261,6 +273,30 @@ async def on_language_choice(message: Message) -> None:
         reply_markup=ReplyKeyboardRemove(),
     )
     await _send_menu_hint(message, session.lang, text_key="menu.welcome")
+
+
+@dp.message(Command("menu"))
+async def cmd_menu(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    session = get_session(user_id)
+    await _send_menu_hint(message, session.lang)
+
+
+@dp.message(Command("debug_menu"))
+async def cmd_debug_menu(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    session = get_session(user_id)
+    locale = _ensure_menu_locale(session.lang)
+    payload = {
+        "miniapp_url": "set" if TELEGRAM_MINIAPP_URL else "empty",
+        "booking_url": "set" if TELEGRAM_BOOKING_URL else "empty",
+        "locale": locale,
+    }
+    await message.answer(
+        json.dumps(payload, ensure_ascii=False),
+        reply_markup=build_main_menu(locale),
+        disable_web_page_preview=True,
+    )
 
 
 @dp.message(Command("tz"))
@@ -419,7 +455,7 @@ async def on_any_message(message: Message, bot: Bot) -> None:
 
     await message.answer(
         i18n.t(session.lang, "brief.received"),
-        reply_markup=_menu_inline_keyboard(session.lang),
+        reply_markup=build_main_menu(_ensure_menu_locale(session.lang)),
     )
 
 

@@ -9,6 +9,13 @@ Aiogram-based Telegram bot that exposes the AI Avatar miniapp through a two-butt
 - Missing or empty values hide the corresponding button after logging a warning; the bot keeps running.
 - Text commands `/skills`, `/status`, `/tz` and their Russian equivalents now reply with a short hint plus the same two-button inline keyboard.
 
+## Menu Diagnostics
+
+- Required envs: `TELEGRAM_MINIAPP_URL`, `TELEGRAM_BOOKING_URL` (omit one to hide its button after a warning).
+- `/menu` — resend the localized inline menu built from the current env values.
+- `/debug_menu` — respond with `{"miniapp_url": "set|empty", "booking_url": "set|empty", "locale": "ru|en"}` and attach the same menu.
+- Testing: set the envs, restart the bot, run `/start`, switch language, then use `/menu` and `/debug_menu` to verify buttons and diagnostics.
+
 ## Setup
 
 ### 1. Create the bot
