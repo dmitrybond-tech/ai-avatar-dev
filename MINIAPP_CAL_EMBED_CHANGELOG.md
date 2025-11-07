@@ -119,3 +119,4 @@ img-src https://*.cal.com data:
 style-src 'self' 'unsafe-inline'
 ```
 
+

@@ -71,6 +71,8 @@ jobs:
 
       - name: Verify briefs upload route exists
         if: ${{ matrix.service == 'api' }}
+        env:
+          DATA_DIR: ${{ runner.temp }}/miniapp-api
         run: |
           python - <<'PY'
           from fastapi.routing import APIRoute
