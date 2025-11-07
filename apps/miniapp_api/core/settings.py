@@ -5,7 +5,12 @@ from functools import lru_cache
 from typing import Optional
 
 import logging
-from pydantic import BaseSettings, Field, root_validator, validator
+try:  # pragma: no cover - compatibility shim
+    from pydantic_settings import BaseSettings
+except ImportError:  # pragma: no cover - fallback for Pydantic v1
+    from pydantic import BaseSettings  # type: ignore[attr-defined]
+
+from pydantic import Field, root_validator, validator
 
 
 logger = logging.getLogger(__name__)
