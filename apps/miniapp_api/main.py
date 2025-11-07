@@ -31,6 +31,15 @@ try:
 except Exception as e:
     logging.getLogger(__name__).warning("Failed to include public_tasks router: %s", e.__class__.__name__)
 
+try:
+    from apps.miniapp_api.routers import briefs as briefs_router
+
+    app.include_router(briefs_router.router)
+    if hasattr(briefs_router, "alias_router"):
+        app.include_router(briefs_router.alias_router)
+except Exception as e:
+    logging.getLogger(__name__).warning("Failed to include briefs router: %s", e.__class__.__name__)
+
 
 @app.get("/healthz")
 async def healthz() -> dict:
