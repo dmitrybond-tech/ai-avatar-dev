@@ -1,5 +1,6 @@
 import React, { useRef, useState, useMemo } from "react";
 import { createI18n } from "../lib/i18n";
+import { submitBriefUpload } from "../features/upload/upload";
 
 const i18n = createI18n();
 
@@ -36,7 +37,6 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ name: "", company: "", phone: "", email: "", message: "" });
   const [file, setFile] = useState<File | null>(null);
-  const [submittedId, setSubmittedId] = useState<string | null>(null);
   const [submitStatus, setSubmitStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   if (!open) return null;
@@ -47,7 +47,7 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
   const phoneSanitized = useMemo(() => form.phone.replace(/[^\d+]/g, ""), [form.phone]);
   const emailValid = emailRx.test(form.email);
   const phoneValid = phoneSanitized.length >= 7;
-  const isReady = Boolean(form.name && form.company && emailValid && phoneValid && file && !busy && !submittedId);
+  const isReady = Boolean(form.name && form.company && emailValid && phoneValid && file && !busy);
 
   const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] || null;
@@ -71,41 +71,16 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
         fd.append("message", form.message.trim());
       }
 
-      async function postBrief(fd: FormData) {
-        const tryPost = async (url: string) => {
-          const res = await fetch(url, { method: "POST", body: fd });
-          if (!res.ok) throw new Error(String(res.status));
-          return res.json();
-        };
-        try {
-          return await tryPost("/briefs/upload");
-        } catch (e: any) {
-          // fallback if nginx doesn't proxy /briefs/ yet
-          return await tryPost("/api/briefs/upload");
-        }
+      const result = await submitBriefUpload(fd);
+      const parts = [i18n.t("brief.success")];
+      if (result.filename) parts.push(result.filename);
+      if (result.telegram_sent === false) {
+        parts.push(i18n.get() === "ru" ? "Telegram не настроен — файл сохранён." : "Telegram delivery skipped; file stored.");
       }
-
-      const result = await postBrief(fd);
-      if (result?.ok && result?.request_id) {
-        const requestId = result.request_id;
-        const isDedup = result.dedup === true;
-        setSubmittedId(requestId);
-        
-        const successMsg = isDedup
-          ? `${i18n.t("brief.success")} | ${i18n.get() === "ru" ? "Уже отправлено ранее" : "Already submitted recently"} | ID: ${requestId}`
-          : `${i18n.t("brief.success")} | ID: ${requestId}`;
-        
-        setSubmitStatus({ type: "success", message: successMsg });
-        
-        // Reset form only if not a duplicate
-        if (!isDedup) {
-          setForm({ name: "", company: "", phone: "", email: "", message: "" });
-          setFile(null);
-          if (fileRef.current) fileRef.current.value = "";
-        }
-      } else {
-        throw new Error(i18n.t("brief.error"));
-      }
+      setSubmitStatus({ type: "success", message: parts.join(" • ") });
+      setForm({ name: "", company: "", phone: "", email: "", message: "" });
+      setFile(null);
+      if (fileRef.current) fileRef.current.value = "";
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : i18n.t("brief.error");
       setSubmitStatus({ type: "error", message: errorMsg });
@@ -133,39 +108,6 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
             >
               <div className="flex items-center justify-between gap-2">
                 <span>{submitStatus.message}</span>
-                {submittedId && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(submittedId);
-                        // Optional: show brief feedback
-                        const originalMsg = submitStatus.message;
-                        setSubmitStatus({
-                          type: "success",
-                          message: originalMsg.replace(submittedId, `${submittedId} ${i18n.get() === "ru" ? "(скопировано)" : "(copied)"}`),
-                        });
-                        setTimeout(() => setSubmitStatus({ type: "success", message: originalMsg }), 2000);
-                      } catch (e) {
-                        // Fallback for older browsers
-                        const textArea = document.createElement("textarea");
-                        textArea.value = submittedId;
-                        document.body.appendChild(textArea);
-                        textArea.select();
-                        try {
-                          document.execCommand("copy");
-                        } catch (err) {
-                          // Ignore
-                        }
-                        document.body.removeChild(textArea);
-                      }
-                    }}
-                    className="px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-200 rounded hover:bg-green-200 dark:hover:bg-green-700 transition-colors"
-                    title={i18n.get() === "ru" ? "Копировать ID" : "Copy ID"}
-                  >
-                    {i18n.get() === "ru" ? "Копировать" : "Copy"}
-                  </button>
-                )}
               </div>
             </div>
           )}
@@ -181,7 +123,6 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
                 setSubmitStatus(null);
               }}
               placeholder={i18n.get()==="ru" ? "Ваше имя" : "Your name"}
-              disabled={!!submittedId}
             />
           </label>
 
@@ -195,7 +136,6 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
                 setSubmitStatus(null);
               }}
               placeholder={i18n.get()==="ru" ? "Название компании" : "Company name"}
-              disabled={!!submittedId}
             />
           </label>
 
@@ -210,7 +150,6 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
               }}
               placeholder={i18n.get()==="ru" ? "+7 999 123-45-67" : "+1 555 000 1234"}
               inputMode="tel"
-              disabled={!!submittedId}
             />
             {!phoneValid && form.phone && <p className="hint error mt-1 text-sm">{i18n.get()==="ru" ? "Проверьте номер" : "Check phone format"}</p>}
           </label>
@@ -227,7 +166,6 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
               }}
               placeholder="you@example.com"
               inputMode="email"
-              disabled={!!submittedId}
             />
             {!emailValid && form.email && <p className="hint error mt-1 text-sm">{i18n.get()==="ru" ? "Проверьте email" : "Check email"}</p>}
           </label>
@@ -243,7 +181,6 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
                 setSubmitStatus(null);
               }}
               placeholder={i18n.get()==="ru" ? "Коротко о задаче..." : "Short description..."}
-              disabled={!!submittedId}
             />
           </label>
 
@@ -256,7 +193,6 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
               capture="environment"
               onChange={onPickFile}
               className="w-full text-sm"
-              disabled={!!submittedId}
             />
             <p className="hint mt-1 text-xs">
               {i18n.get()==="ru"
@@ -271,15 +207,11 @@ export function BriefUploadModal({ open, onClose }: { open: boolean; onClose: ()
               {i18n.t("brief.cancel")}
             </button>
             <button
-              disabled={!isReady || !!submittedId}
+              disabled={!isReady}
               className="px-3 py-1 rounded-md border bg-black text-white disabled:opacity-50"
               onClick={submit}
             >
-              {submittedId
-                ? (i18n.get() === "ru" ? "Отправлено" : "Submitted")
-                : busy
-                ? (i18n.get() === "ru" ? "Отправка..." : "Sending...")
-                : i18n.t("brief.send")}
+              {busy ? (i18n.get() === "ru" ? "Отправка..." : "Sending...") : i18n.t("brief.send")}
             </button>
           </div>
         </ModalErrorBoundary>

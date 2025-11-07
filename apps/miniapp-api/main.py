@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Literal
 
 from fastapi import FastAPI, Query
@@ -6,12 +7,22 @@ from pydantic import BaseModel, Field
 
 app = FastAPI(title="MiniApp API", version="1.0.0")
 
-# CORS left in place for local dev convenience; same-origin in prod avoids CORS usage
-allowed_origins = [
+DEFAULT_ORIGINS = [
     "https://miniapp.dmitrybond.tech",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+
+
+def _parse_cors_origins() -> List[str]:
+    raw = os.getenv("CORS_ORIGINS")
+    if not raw:
+        return DEFAULT_ORIGINS
+    parsed = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return parsed or DEFAULT_ORIGINS
+
+
+allowed_origins = _parse_cors_origins()
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,6 +30,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    max_age=86400,
 )
 
 # Mount public tasks router under /api prefix
@@ -30,6 +42,7 @@ app.include_router(public_tasks_router, prefix="/api")
 app.include_router(skills_router)
 app.include_router(skills_router, prefix="/api")
 app.include_router(briefs_router)
+app.include_router(briefs_router, prefix="/api")
 
 
 class TaskItem(BaseModel):
@@ -123,7 +136,6 @@ async def cal_suggest(event: str = Query(default="intro-30m"), lang: str = Query
 
 
 if __name__ == "__main__":
-    import os
     import uvicorn
 
     port = int(os.getenv("PORT", "8080"))

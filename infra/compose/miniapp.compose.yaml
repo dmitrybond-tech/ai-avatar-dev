@@ -11,6 +11,9 @@ services:
       - DEFAULT_LANG=${DEFAULT_LANG:-ru}
       - NOTION_TIMEOUT=${NOTION_TIMEOUT:-10}
       - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
+      - UPLOAD_DIR=${UPLOAD_DIR:-/app/uploads}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://miniapp.dmitrybond.tech}
+      - TELEGRAM_SEND_REQUIRED=${TELEGRAM_SEND_REQUIRED:-false}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
@@ -18,6 +21,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    volumes:
+      - ./data/uploads:/app/uploads
 
   bot:
     image: ${IMAGE_BOT:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot}:${IMAGE_TAG:-main}
