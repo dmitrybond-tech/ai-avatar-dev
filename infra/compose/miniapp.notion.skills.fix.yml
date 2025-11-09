@@ -3,10 +3,8 @@ services:
     env_file:
       - .env.miniapp
     environment:
-      NOTION_API_KEY: ${NOTION_API_KEY}
-      NOTION_DB_SKILLS: ${NOTION_DB_SKILLS}
-      NOTION_DB: ${NOTION_DB:-}
-      NOTION_SECRET: ${NOTION_SECRET:-}
+      NOTION_API_KEY: ${NOTION_API_KEY:?missing}
+      NOTION_DB_SKILLS: ${NOTION_DB_SKILLS:?missing}
       NOTION_CACHE_TTL_SKILLS: ${NOTION_CACHE_TTL_SKILLS:-300}
 
 
