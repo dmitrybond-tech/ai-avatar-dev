@@ -13,8 +13,8 @@ services:
       - NOTION_CACHE_TTL_SKILLS=${NOTION_CACHE_TTL_SKILLS:-300}
       - SKILLS_SOURCE=${SKILLS_SOURCE:-auto}
       - SKILLS_CSV_PATH=${SKILLS_CSV_PATH:-/app/data/skills.csv}
-      - NOTION_API_KEY=${NOTION_API_KEY:-}
-      - NOTION_DB_SKILLS=${NOTION_DB_SKILLS:-}
+      - NOTION_API_KEY=${NOTION_API_KEY}
+      - NOTION_DB_SKILLS=${NOTION_DB_SKILLS}
       - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
       - UPLOAD_DIR=${UPLOAD_DIR:-/app/uploads}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://miniapp.dmitrybond.tech}

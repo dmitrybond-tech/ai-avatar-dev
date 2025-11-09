@@ -103,24 +103,25 @@ VITE_DEFAULT_LANG=ru
 > Never commit secrets. Use `.env` locally and CI/CD secrets in production.
 
 ## Skills Data (Notion + CSV fallback)
-- `SKILLS_SOURCE=auto` (default) tries Notion first and falls back to the CSV bundled at `apps/api/data/skills.csv` when Notion is unavailable or misconfigured.
-- `SKILLS_SOURCE=notion` enforces Notion only; the API responds with `503 {"error":"notion_failed"}` if it cannot read the database.
+- `SKILLS_SOURCE=auto` (default) hits Notion first and falls back to the CSV bundled at `apps/api/data/skills.csv` when the remote call fails. The API keeps the last successful source in-memory (`get_last_fetch_meta()` / `/api/skills/_debug`).
+- `SKILLS_SOURCE=notion` enforces Notion only; transient errors surface as `503 {"error":"notion_error"}`.
 - `SKILLS_SOURCE=csv` serves the CSV directly and skips Notion entirely. Override `SKILLS_CSV_PATH` when the file lives elsewhere.
 - `NOTION_TIMEOUT` controls the per-request timeout in seconds when Notion is enabled.
-- `NOTION_CACHE_TTL_SKILLS` sets the in-memory cache TTL (seconds, default `300`) that the API uses per-locale to avoid hitting Notion on every request.
+- `NOTION_CACHE_TTL_SKILLS` sets the per-locale in-memory cache TTL (seconds, default `300`). Values below 60 seconds are coerced to 60, anything above one hour is clamped back to 3600.
 
 ### Skills API (mini-app web)
-- `GET /api/skills?lang=en|ru` → array of `{ slug, title, short, tags }` sorted by the optional `Order` property (or title fallback). Missing localized fields fall back to the other locale or generic column before returning.
-- `GET /api/skills/{slug}?lang=en|ru` → `{ slug, title, short, tags, bullets, examples }`. Multiline rich-text is split into arrays, bullet markers like `-`/`•` are trimmed, and empty items are dropped.
-- Unpublished pages are filtered out when `Published` is unchecked or `Status` is not `Public`. Unknown slugs yield `404 {"error":"skill_not_found"}`. Misconfiguration returns `500 {"error":"skills_not_configured"}`.
-- Responses are cached per locale for `NOTION_CACHE_TTL_SKILLS` seconds. Set the env var across compose overrides so the API container picks it up (`infra/compose/*.yml` already forward it).
+- `GET /api/skills?lang=en|ru` → array of `{ slug, title, short, tags }` sorted by the optional `Order` property and then by title. Missing localized fields fall back to the other locale or the generic column before returning to the client.
+- `GET /api/skills/{slug}?lang=en|ru` → `{ slug, title, short, tags, bullets, examples }`. Multiline rich-text is split into arrays, leading bullet markers like `-`, `•`, or `*` are trimmed, and empty items are dropped.
+- Errors are deterministic: misconfiguration yields `500 {"error":"skills_not_configured"}`, Notion IO issues raise `503 {"error":"notion_error"}`, CSV-only failures use `503 {"error":"skills_unavailable"}`, and unknown slugs return `404 {"error":"skill_not_found"}`.
+- Responses are cached per locale for `NOTION_CACHE_TTL_SKILLS` seconds. Compose files in `infra/compose/` forward `NOTION_TIMEOUT`, `NOTION_CACHE_TTL_SKILLS`, `NOTION_API_KEY`, `NOTION_DB_SKILLS`, and `SKILLS_SOURCE` into the API container; provide non-empty secrets via the `.env.miniapp` file.
+- When `DEBUG_SKILLS_API=true`, call `GET /api/skills/_debug?lang=<code>` to inspect `{ resolved_lang, source, count }`.
 
 ### Notion schema guidelines for skills
-- Titles are auto-detected via `Title`, `Name`, `Skill`, or `Название` — the API also honours language-specific suffixes like `Title EN`, `Title_RU`, and `TitleRU`.
-- Text fields such as `Short`, `Summary`, `Long`, or `Details` follow the same suffix logic (`base {LANG}`, `base_LANG`, `baseLANG`). Rich-text properties are flattened to plain strings.
-- Bullet lists and examples are read from rich-text properties named `Bullets`, `Bullets EN`, `Examples`, etc.; every line (trimmed of bullets/dashes) becomes an array entry.
-- Optional metadata (`Category`, `Domain`, `Tags`, `Level`, `Order`) is resolved if the Notion property exists (select, multi-select, or number). Missing fields simply default to `null`/`[]`.
-- When renaming columns, keep the base name (e.g. `Short`) and only adjust the suffix — that way, the tolerant matcher keeps working without redeploying the backend.
+- Titles are auto-detected via `Title`, `Name`, or `Skill`, and language-specific suffixes such as `Title EN`, `Title_EN`, `TitleEN`, `Title RU`, etc.
+- Text fields such as `Short`, `Summary`, or `Description` follow the same suffix logic (`base {LANG}`, `base_LANG`, `baseLANG`). Rich-text properties are flattened to plain strings on output.
+- Bullet lists and examples are read from rich-text properties named `Bullets`, `Bullets EN`, `List`, `Examples`, etc.; each line (after trimming bullets/dashes) becomes an array entry.
+- Optional metadata (`Tags`, `Skills`, `Labels`, `Order`, `Sort`, `Priority`) is resolved if the Notion property exists (multi-select, select, or number). Missing fields default to `[]` / `None`.
+- Visibility is controlled by either a `Published` checkbox or `Status` property: at least one must evaluate to a truthy/public value for the page to surface.
 
 ### Local FastAPI dev (PowerShell)
 ```powershell
@@ -151,6 +152,7 @@ Set `SKILLS_SOURCE=auto` again when you want to switch back to Notion.
 ## Localization
 - WebApp locale resolves once during startup via `src/shared/i18n/resolveLocale.ts` (order: `?lang` query → `localStorage('app.locale')` → Telegram init data → browser → `VITE_DEFAULT_LANG`). `LocaleProvider` persists the choice and `useLocale()/useI18n()` expose it to components while storing back to `localStorage('app.locale')`.
 - Skills-related fetchers now call the API as `/api/skills?lang=<locale>` and include an `X-Locale` header so the backend can honour the chosen language.
+- The mini-app header exposes an RU/EN switcher that updates the URL query (`?lang=`), pushes the localized `/en/skills` / `/ru/skills` route, persists to storage, and triggers data re-fetch without a full reload.
 - The Telegram bot keeps each user’s language in its state store and injects `?lang=<locale>` into the WebApp button URL every time keyboards are rendered, so the miniapp opens in the same language the user picked in chat.
 
 ## Locale Debugging

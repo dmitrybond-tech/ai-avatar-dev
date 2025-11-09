@@ -43,6 +43,14 @@ class SkillsUnavailableError(SkillsSourceError):
     """Raised when the configured source cannot provide data."""
 
 
+class SkillsNotionError(SkillsUnavailableError):
+    """Raised when the Notion source fails."""
+
+
+class SkillsCsvError(SkillsUnavailableError):
+    """Raised when the CSV fallback fails."""
+
+
 @dataclass(slots=True)
 class _FetchMeta:
     source: str = "unknown"
@@ -213,7 +221,15 @@ def get_skills(lang: Lang = "en") -> List[SkillOut]:
         try:
             skills = _load_from_notion(normalized_lang)
             _store_fetch_meta("notion", False, len(skills), normalized_lang)
-        except SkillsSourceError as exc:  # pragma: no cover - configuration/network
+        except SkillsNotionError as exc:  # pragma: no cover - configuration/network
+            _store_fetch_meta("notion", False, 0, normalized_lang)
+            logger.warning(
+                "skills_source=notion lang=%s count=0 error=%s",
+                normalized_lang,
+                exc,
+            )
+            raise
+        except SkillsSourceError as exc:  # pragma: no cover - defensive
             _store_fetch_meta("notion", False, 0, normalized_lang)
             logger.warning(
                 "skills_source=notion lang=%s count=0 error=%s",
@@ -225,9 +241,19 @@ def get_skills(lang: Lang = "en") -> List[SkillOut]:
         try:
             skills = _load_from_notion(normalized_lang)
             _store_fetch_meta("notion", False, len(skills), normalized_lang)
-        except SkillsSourceError as exc:
+        except SkillsNotionError as exc:
             csv_path = _resolve_csv_path()
-            skills = _load_from_csv(normalized_lang)
+            try:
+                skills = _load_from_csv(normalized_lang)
+            except SkillsCsvError:
+                _store_fetch_meta("notion", False, 0, normalized_lang)
+                logger.warning(
+                    "skills_source=fallback_csv_failed path=%s lang=%s reason=%s",
+                    csv_path,
+                    normalized_lang,
+                    exc,
+                )
+                raise
             logger.warning(
                 "skills_source=fallback_csv path=%s lang=%s count=%d reason=%s",
                 csv_path,
@@ -291,12 +317,20 @@ def _resolve_csv_path() -> Path:
 def _load_from_csv(lang: Lang) -> List[SkillOut]:
     path = _resolve_csv_path()
     if not path.exists():
-        raise SkillsUnavailableError(f"CSV file not found: {path}")
+        raise SkillsCsvError(f"CSV file not found: {path}")
 
     items: List[SkillOut] = []
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+    try:
+        handle = path.open("r", encoding="utf-8-sig", newline="")
+    except OSError as exc:  # pragma: no cover - filesystem specific
+        raise SkillsCsvError(f"CSV file not readable: {path}") from exc
+
+    with handle:
         reader = csv.DictReader(handle)
-        rows = list(reader)
+        try:
+            rows = list(reader)
+        except csv.Error as exc:  # pragma: no cover - malformed csv
+            raise SkillsCsvError(f"CSV parse failed: {path}") from exc
         for index, row in enumerate(rows, start=1):
             title_key = f"Title {'EN' if lang == 'en' else 'RU'}"
             short_key = f"Short {'EN' if lang == 'en' else 'RU'}"
@@ -330,16 +364,25 @@ def _load_from_csv(lang: Lang) -> List[SkillOut]:
             except (TypeError, ValueError):
                 order = index
 
-            skill = SkillOut(
-                id=row.get("ID", slug) or slug,
-                slug=slug,
-                title=title,
-                short=short,
-                bullets=bullets,
-                examples=examples,
-                tags=tags,
-                order=order,
-            )
+            try:
+                skill = SkillOut(
+                    id=row.get("ID", slug) or slug,
+                    slug=slug,
+                    title=title,
+                    short=short,
+                    bullets=bullets,
+                    examples=examples,
+                    tags=tags,
+                    order=order,
+                )
+            except Exception as exc:  # pragma: no cover - defensive parse guard
+                logger.warning(
+                    "skills_source=csv lang=%s row=%d invalid_record error=%s",
+                    lang,
+                    index,
+                    exc,
+                )
+                continue
             items.append(skill)
 
     unique = _ensure_unique_slugs(items)
@@ -410,12 +453,12 @@ def _load_from_notion(lang: Lang) -> List[SkillOut]:
             exc.message,
             getattr(exc, "request_id", ""),
         )
-        raise SkillsUnavailableError(f"Notion API error: {exc.message}") from exc
+        raise SkillsNotionError(f"Notion API error: {exc.message}") from exc
     except SkillsSourceError:
         raise
     except Exception as exc:  # pragma: no cover - defensive
         logger.error("skills_source=notion error=%s", exc, exc_info=True)
-        raise SkillsUnavailableError("Failed to fetch skills from Notion") from exc
+        raise SkillsNotionError("Failed to fetch skills from Notion") from exc
 
 
 def _is_published(page: Dict[str, object]) -> bool:

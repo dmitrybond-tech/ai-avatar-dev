@@ -11,6 +11,8 @@ from app.core.settings import settings
 from app.core.logging import get_logger
 from app.providers.skills import (
     SkillsConfigurationError,
+    SkillsCsvError,
+    SkillsNotionError,
     SkillsSourceMode,
     SkillsUnavailableError,
     get_last_fetch_meta,
@@ -85,14 +87,26 @@ async def list_skills(
     except SkillsConfigurationError:
         logger.error("skills_configuration_missing")
         return JSONResponse(status_code=500, content={"error": "skills_not_configured"})
-    except SkillsUnavailableError as exc:
+    except SkillsNotionError as exc:
         logger.warning(
             "skills_fetch_failed",
-            extra={"source": source_mode.value, "lang": normalized_lang, "error": exc.__class__.__name__},
+            extra={
+                "source": source_mode.value,
+                "lang": normalized_lang,
+                "error": exc.__class__.__name__,
+            },
         )
-        if source_mode is SkillsSourceMode.CSV:
-            return JSONResponse(status_code=503, content={"error": "skills_unavailable"})
-        return JSONResponse(status_code=502, content={"error": "notion_error"})
+        return JSONResponse(status_code=503, content={"error": "notion_error"})
+    except (SkillsCsvError, SkillsUnavailableError) as exc:
+        logger.warning(
+            "skills_fetch_failed",
+            extra={
+                "source": source_mode.value,
+                "lang": normalized_lang,
+                "error": exc.__class__.__name__,
+            },
+        )
+        return JSONResponse(status_code=503, content={"error": "skills_unavailable"})
 
     cards = [
         SkillCard(
@@ -125,14 +139,28 @@ async def get_skill(
     except SkillsConfigurationError:
         logger.error("skills_configuration_missing")
         return JSONResponse(status_code=500, content={"error": "skills_not_configured"})
-    except SkillsUnavailableError as exc:
+    except SkillsNotionError as exc:
         logger.warning(
             "skills_fetch_failed.detail",
-            extra={"source": source_mode.value, "lang": normalized_lang, "slug": slug, "error": exc.__class__.__name__},
+            extra={
+                "source": source_mode.value,
+                "lang": normalized_lang,
+                "slug": slug,
+                "error": exc.__class__.__name__,
+            },
         )
-        if source_mode is SkillsSourceMode.CSV:
-            return JSONResponse(status_code=503, content={"error": "skills_unavailable"})
-        return JSONResponse(status_code=502, content={"error": "notion_error"})
+        return JSONResponse(status_code=503, content={"error": "notion_error"})
+    except (SkillsCsvError, SkillsUnavailableError) as exc:
+        logger.warning(
+            "skills_fetch_failed.detail",
+            extra={
+                "source": source_mode.value,
+                "lang": normalized_lang,
+                "slug": slug,
+                "error": exc.__class__.__name__,
+            },
+        )
+        return JSONResponse(status_code=503, content={"error": "skills_unavailable"})
 
     for item in skills:
         if item.slug.lower() == slug.strip().lower():

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { PrimaryActions } from './components/Buttons'
 import { TasksModal } from './components/TasksModal'
 import { ChatBox } from './components/Chat'
@@ -37,6 +37,14 @@ const SUPPORTED_LANG_SET = new Set<Lang>(SUPPORTED_LANGS)
 const envDefault = normalizeLangCandidate(import.meta.env.VITE_DEFAULT_LANG)
 const DEFAULT_LANG: Lang = envDefault && SUPPORTED_LANG_SET.has(envDefault) ? envDefault : SUPPORTED_LANGS[0]
 
+function ensureSupportedLang(candidate: string | null | undefined): Lang {
+  const normalized = normalizeLangCandidate(candidate)
+  if (normalized && SUPPORTED_LANG_SET.has(normalized)) {
+    return normalized
+  }
+  return DEFAULT_LANG
+}
+
 type Route =
   | { name: 'home' }
   | { name: 'skills', lang: Lang, slug?: string | null }
@@ -67,37 +75,42 @@ export function App() {
   const [isTasksOpen, setIsTasksOpen] = useState(false)
   const headerRef = useRef<HTMLElement | null>(null)
 
-  const ensureLang = (candidate: string | null | undefined): Lang => {
-    const normalized = normalizeLangCandidate(candidate)
-    if (normalized && SUPPORTED_LANG_SET.has(normalized)) {
-      return normalized
+  const buildTarget = useCallback((path: string, lang: Lang): string => {
+    if (typeof window === 'undefined') {
+      return path
     }
-    return DEFAULT_LANG
-  }
+    const url = new URL(window.location.href)
+    url.pathname = path
+    url.searchParams.set('lang', lang)
+    return `${url.pathname}${url.search}${url.hash}`
+  }, [])
 
-  const goTo = (path: string, replace = false) => {
-    if (replace) {
-      window.history.replaceState({}, '', path)
-    } else {
-      window.history.pushState({}, '', path)
-    }
-    setRoute(parseRoute(path))
-  }
-
-  const goHome = () => {
-    goTo('/')
-  }
-
-  const goSkills = (lang: Lang, slug?: string | null) => {
-    const safeLang = SUPPORTED_LANG_SET.has(lang) ? lang : DEFAULT_LANG
+  const goTo = useCallback((path: string, options?: { replace?: boolean; lang?: Lang }) => {
+    const requestedLang = options?.lang
+    const safeLang = ensureSupportedLang(requestedLang ?? locale)
     if (safeLang !== locale) {
       setLocale(safeLang)
     }
+
+    const target = buildTarget(path, safeLang)
+    if (options?.replace) {
+      window.history.replaceState({}, '', target)
+    } else {
+      window.history.pushState({}, '', target)
+    }
+    setRoute(parseRoute(path))
+  }, [buildTarget, locale, setLocale])
+
+  const goHome = useCallback((lang?: Lang, options?: { replace?: boolean }) => {
+    goTo('/', { lang, replace: options?.replace })
+  }, [goTo])
+
+  const goSkills = useCallback((lang: Lang, slug?: string | null, options?: { replace?: boolean }) => {
+    const safeLang = ensureSupportedLang(lang)
     const base = `/${safeLang}/skills`
     const target = slug ? `${base}/${slug}` : base
-    goTo(target)
-  }
-
+    goTo(target, { lang: safeLang, replace: options?.replace })
+  }, [goTo])
   useEffect(() => {
     // Initialize Telegram WebApp safely without blocking UI
     const { inTg } = safeInitTelegram()
@@ -112,15 +125,33 @@ export function App() {
 
   useEffect(() => {
     if (route.name === 'redirect') {
-      goTo(route.to, true)
+      goTo(route.to, { replace: true })
     }
-  }, [route])
+  }, [route, goTo])
 
   useEffect(() => {
     if (route.name === 'skills' && route.lang !== locale) {
-      setLocale(route.lang)
+      goSkills(route.lang, route.slug ?? null, { replace: true })
     }
-  }, [locale, route, setLocale])
+  }, [locale, route, goSkills])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const currentPath = window.location.pathname || '/'
+    const searchParams = new URLSearchParams(window.location.search)
+    const queryValue = searchParams.get('lang')
+    const normalizedQuery = queryValue ? normalizeLangCandidate(queryValue) : null
+    if (normalizedQuery && normalizedQuery !== locale) {
+      setLocale(normalizedQuery)
+      goTo(currentPath, { lang: normalizedQuery, replace: true })
+      return
+    }
+    if (!normalizedQuery) {
+      goTo(currentPath, { lang: locale, replace: true })
+    }
+  }, [goTo, locale, setLocale])
 
   useLayoutEffect(() => {
     const target = headerRef.current
@@ -150,12 +181,33 @@ export function App() {
     }
   }, [])
 
+  const currentLang = ensureSupportedLang(locale)
+
+  const handleLocaleChange = useCallback(
+    (target: Lang) => {
+      const safeTarget = ensureSupportedLang(target)
+      if (safeTarget === currentLang) {
+        if (typeof window === 'undefined') {
+          return
+        }
+        const params = new URLSearchParams(window.location.search)
+        if (params.get('lang') === safeTarget) {
+          return
+        }
+      }
+      if (route.name === 'skills') {
+        goSkills(safeTarget, route.slug ?? null, { replace: true })
+      } else {
+        goHome(safeTarget, { replace: true })
+      }
+    },
+    [currentLang, goHome, goSkills, route],
+  )
+
   // Standalone brief page - render without wrapper
   if (route.name === 'brief') {
     return <BriefFormPage />
   }
-
-  const currentLang = locale as Lang
 
   return (
     <div className="min-h-dvh w-full bg-white text-black">
@@ -171,20 +223,44 @@ export function App() {
             />
             <div className="font-semibold">{t('header.title')}</div>
           </div>
-          <a
-            href="https://dmitrybond.tech"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1 text-sm rounded-md border border-gray-300 hover:bg-gray-50"
-          >
-            {t('header.personalSite')}
-          </a>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center rounded-full border border-gray-200 bg-white p-0.5 text-xs shadow-sm">
+              {(['ru', 'en'] as const).map((code) => {
+                const isActive = code === currentLang
+                return (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => handleLocaleChange(code)}
+                    className={[
+                      'px-2 py-1 rounded-full transition',
+                      isActive
+                        ? 'bg-black text-white shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-100',
+                    ].join(' ')}
+                    aria-pressed={isActive}
+                    aria-label={code === 'ru' ? 'Русский' : 'English'}
+                  >
+                    {code.toUpperCase()}
+                  </button>
+                )
+              })}
+            </div>
+            <a
+              href="https://dmitrybond.tech"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1 text-sm rounded-md border border-gray-300 hover:bg-gray-50"
+            >
+              {t('header.personalSite')}
+            </a>
+          </div>
         </header>
         {route.name === 'home' && (
           <>
             <PrimaryActions
               lang={currentLang}
-              onSkills={(lang) => goSkills(ensureLang(lang))}
+              onSkills={(lang) => goSkills(ensureSupportedLang(lang))}
               onTasks={() => setIsTasksOpen(true)}
             />
             <ChatBox />
