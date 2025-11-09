@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getSkills } from '../api/client'
+import { getSkillDetail, getSkills } from '../api/client'
 import { SkillDetailView } from '../components/SkillDetail'
-import type { Skill } from '../types'
+import type { SkillCard, SkillDetail } from '../types'
 
 type Lang = 'ru' | 'en'
 
@@ -18,22 +18,16 @@ const titles: Record<Lang, string> = {
   en: 'Skills',
 }
 
-function sortSkills(list: Skill[]): Skill[] {
-  return [...list].sort((a, b) => {
-    const orderA = typeof a.order === 'number' ? a.order : Number.POSITIVE_INFINITY
-    const orderB = typeof b.order === 'number' ? b.order : Number.POSITIVE_INFINITY
-    if (orderA !== orderB) {
-      return orderA - orderB
-    }
-    return a.title.localeCompare(b.title)
-  })
-}
-
 export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail }: SkillsPageProps) {
-  const [skills, setSkills] = useState<Skill[] | null>(null)
+  const [skills, setSkills] = useState<SkillCard[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [reloadToken, setReloadToken] = useState(0)
+  const [detailsCache, setDetailsCache] = useState<Record<string, SkillDetail>>({})
+  const [activeDetail, setActiveDetail] = useState<SkillDetail | null>(null)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailReloadToken, setDetailReloadToken] = useState(0)
   const dialogRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -45,7 +39,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
     getSkills(lang, controller.signal)
       .then((list) => {
         if (!active) return
-        setSkills(sortSkills(list))
+        setSkills(list)
       })
       .catch((err) => {
         if (!active) return
@@ -59,20 +53,68 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
     }
   }, [lang, reloadToken])
 
-  const activeSkill = useMemo(() => {
-    if (!selectedSlug || !skills?.length) return null
-    return skills.find((item) => item.slug === selectedSlug) ?? null
-  }, [selectedSlug, skills])
+  useEffect(() => {
+    setDrawerOpen(Boolean(selectedSlug))
+  }, [selectedSlug])
 
   useEffect(() => {
-    setDrawerOpen(Boolean(activeSkill))
-  }, [activeSkill])
-
-  useEffect(() => {
-    if (selectedSlug && skills && !activeSkill) {
+    if (!selectedSlug || !skills) return
+    if (!skills.some((item) => item.slug === selectedSlug)) {
       onCloseDetail()
     }
-  }, [selectedSlug, skills, activeSkill, onCloseDetail])
+  }, [selectedSlug, skills, onCloseDetail])
+
+  useEffect(() => {
+    setDetailsCache({})
+    setActiveDetail(null)
+    setDetailError(null)
+    setDetailReloadToken(0)
+  }, [lang])
+
+  const cachedDetail = useMemo(() => {
+    if (!selectedSlug) return undefined
+    return detailsCache[selectedSlug]
+  }, [selectedSlug, detailsCache])
+
+  useEffect(() => {
+    if (!selectedSlug) {
+      setActiveDetail(null)
+      setDetailError(null)
+      setDetailLoading(false)
+      return
+    }
+
+    if (cachedDetail) {
+      setActiveDetail(cachedDetail)
+      setDetailError(null)
+      setDetailLoading(false)
+      return
+    }
+
+    let active = true
+    const controller = new AbortController()
+    setDetailLoading(true)
+    setDetailError(null)
+    setActiveDetail(null)
+
+    getSkillDetail(selectedSlug, lang, controller.signal)
+      .then((detail) => {
+        if (!active) return
+        setDetailsCache((prev) => ({ ...prev, [detail.slug]: detail }))
+        setActiveDetail(detail)
+        setDetailLoading(false)
+      })
+      .catch((err) => {
+        if (!active) return
+        setDetailError(err instanceof Error ? err.message : String(err))
+        setDetailLoading(false)
+      })
+
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [selectedSlug, lang, detailReloadToken, cachedDetail])
 
   useEffect(() => {
     if (!drawerOpen) return
@@ -107,6 +149,19 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
   const handleRetry = useCallback(() => {
     setReloadToken((token) => token + 1)
   }, [])
+
+  const handleRetryDetail = useCallback(() => {
+    if (!selectedSlug) return
+    setDetailsCache((prev) => {
+      if (selectedSlug in prev) {
+        const next = { ...prev }
+        delete next[selectedSlug]
+        return next
+      }
+      return prev
+    })
+    setDetailReloadToken((token) => token + 1)
+  }, [selectedSlug])
 
   const listContent = useMemo(() => {
     if (error) {
@@ -145,22 +200,24 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
 
     return (
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {skills.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => handleSelect(item.slug)}
-            className="rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition active:scale-[0.99] hover:-translate-y-0.5 hover:shadow"
-            aria-haspopup="dialog"
-            aria-expanded={activeSkill?.slug === item.slug && drawerOpen}
-          >
-            <div className="flex gap-3">
+        {skills.map((item) => {
+          const isActive = selectedSlug === item.slug && drawerOpen
+          const uniqueTags = item.tags ? Array.from(new Set(item.tags)) : []
+          return (
+            <button
+              key={item.slug}
+              type="button"
+              onClick={() => handleSelect(item.slug)}
+              className="rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition active:scale-[0.99] hover:-translate-y-0.5 hover:shadow"
+              aria-haspopup="dialog"
+              aria-expanded={isActive}
+            >
               <div className="flex flex-col gap-2">
                 <div className="text-base font-medium text-black">{item.title}</div>
-                <div className="text-sm text-gray-600">{item.short}</div>
-                {item.tags?.length ? (
+                {item.short ? <div className="text-sm text-gray-600 clamp-2">{item.short}</div> : null}
+                {uniqueTags.length ? (
                   <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-                    {Array.from(new Set(item.tags)).map((tag) => (
+                    {uniqueTags.map((tag) => (
                       <span key={tag} className="rounded-full bg-gray-100 px-2 py-0.5">
                         {tag}
                       </span>
@@ -168,12 +225,12 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
                   </div>
                 ) : null}
               </div>
-            </div>
-          </button>
-        ))}
+            </button>
+          )
+        })}
       </section>
     )
-  }, [skills, error, lang, handleSelect, activeSkill, drawerOpen, handleRetry])
+  }, [skills, error, lang, handleSelect, selectedSlug, drawerOpen, handleRetry])
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-4">
@@ -190,7 +247,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
 
       {listContent}
 
-      {drawerOpen && activeSkill ? (
+      {drawerOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-offset-pt bg-black/40 px-4 pb-10 backdrop-blur-sm"
           role="presentation"
@@ -200,7 +257,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label={activeSkill.title}
+            aria-label={activeDetail?.title ?? selectedSlug ?? titles[lang]}
             tabIndex={-1}
             className="relative modal-offset-mt modal-maxh w-full overflow-auto max-w-lg rounded-3xl bg-white p-5 shadow-xl focus-visible:outline-none"
             onClick={(event) => event.stopPropagation()}
@@ -213,7 +270,34 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
             >
               ×
             </button>
-            <SkillDetailView skill={activeSkill} lang={lang} />
+            {detailLoading ? (
+              <div className="space-y-4">
+                <div className="h-6 w-2/3 animate-pulse rounded bg-gray-100" />
+                <div className="space-y-2">
+                  <div className="h-4 animate-pulse rounded bg-gray-100" />
+                  <div className="h-4 animate-pulse rounded bg-gray-100" />
+                  <div className="h-4 animate-pulse rounded bg-gray-100" />
+                </div>
+              </div>
+            ) : detailError ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                <p>{lang === 'ru' ? 'Не удалось загрузить навык.' : 'Failed to load the skill.'}</p>
+                <p className="mt-1 text-xs text-red-600">{detailError}</p>
+                <button
+                  type="button"
+                  onClick={handleRetryDetail}
+                  className="mt-3 inline-flex items-center justify-center rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition hover:border-red-300 hover:text-red-800"
+                >
+                  {lang === 'ru' ? 'Попробовать ещё раз' : 'Try again'}
+                </button>
+              </div>
+            ) : activeDetail ? (
+              <SkillDetailView skill={activeDetail} lang={lang} />
+            ) : (
+              <div className="text-sm text-gray-500">
+                {lang === 'ru' ? 'Навык не найден.' : 'Skill not found.'}
+              </div>
+            )}
           </div>
         </div>
       ) : null}

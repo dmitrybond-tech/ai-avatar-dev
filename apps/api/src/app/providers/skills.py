@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import csv
 import re
+import time
 import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from threading import Lock
 from typing import Dict, Iterable, List, Literal, Optional, Sequence, Tuple
 
 from notion_client import APIResponseError, Client
@@ -87,6 +89,8 @@ class SkillOut(BaseModel):
 
 _last_fetch_meta = _FetchMeta()
 _notion_client: Optional[Client] = None
+_skills_cache: Dict[Lang, Tuple[float, List["SkillOut"]]] = {}
+_cache_lock = Lock()
 
 
 _TITLE_ALIASES: Dict[Lang, Tuple[str, ...]] = {
@@ -109,8 +113,8 @@ _EXAMPLES_ALIASES: Dict[Lang, Tuple[str, ...]] = {
 _TAGS_CANDIDATES = ("Tags", "Tag", "Skills", "Labels")
 _ORDER_CANDIDATES = ("Order", "Priority", "Sort")
 _SLUG_CANDIDATES = ("Slug", "Key", "Code")
-_PUBLISH_FIELDS = ("Publish", "publish")
-_PUBLISH_TRUE = {"true", "yes", "publish", "published", "ready", "on", "enabled", "1"}
+_PUBLISH_FIELDS = ("Publish", "publish", "Published")
+_PUBLISH_TRUE = {"true", "yes", "publish", "published", "public", "ready", "on", "enabled", "1"}
 _PUBLISH_FALSE = {"false", "no", "draft", "off", "0", "disabled"}
 
 _CYRILLIC_TRANSLIT = {
@@ -176,7 +180,25 @@ def get_skills(lang: Lang = "en") -> List[SkillOut]:
     """Fetch skills using the configured source with graceful fallback."""
 
     normalized_lang: Lang = "ru" if str(lang).strip().lower() == "ru" else "en"
+
+    ttl = _resolve_cache_ttl()
+    now = time.time()
+    with _cache_lock:
+        cached = _skills_cache.get(normalized_lang)
+        if cached:
+            cached_at, cached_items = cached
+            if now - cached_at < ttl:
+                logger.debug(
+                    "skills_cache_hit lang=%s age=%.2fs ttl=%ss",
+                    normalized_lang,
+                    now - cached_at,
+                    ttl,
+                )
+                return cached_items
+
     source_mode = _resolve_source_mode()
+
+    skills: List[SkillOut]
 
     if source_mode is SkillsSourceMode.CSV:
         skills = _load_from_csv(normalized_lang)
@@ -187,13 +209,10 @@ def get_skills(lang: Lang = "en") -> List[SkillOut]:
             normalized_lang,
             len(skills),
         )
-        return skills
-
-    if source_mode is SkillsSourceMode.NOTION:
+    elif source_mode is SkillsSourceMode.NOTION:
         try:
             skills = _load_from_notion(normalized_lang)
             _store_fetch_meta("notion", False, len(skills), normalized_lang)
-            return skills
         except SkillsSourceError as exc:  # pragma: no cover - configuration/network
             _store_fetch_meta("notion", False, 0, normalized_lang)
             logger.warning(
@@ -202,29 +221,46 @@ def get_skills(lang: Lang = "en") -> List[SkillOut]:
                 exc,
             )
             raise SkillsUnavailableError(str(exc)) from exc
+    else:
+        try:
+            skills = _load_from_notion(normalized_lang)
+            _store_fetch_meta("notion", False, len(skills), normalized_lang)
+        except SkillsSourceError as exc:
+            csv_path = _resolve_csv_path()
+            skills = _load_from_csv(normalized_lang)
+            logger.warning(
+                "skills_source=fallback_csv path=%s lang=%s count=%d reason=%s",
+                csv_path,
+                normalized_lang,
+                len(skills),
+                exc,
+            )
+            _store_fetch_meta("csv", True, len(skills), normalized_lang)
 
-    # auto mode
-    try:
-        skills = _load_from_notion(normalized_lang)
-        _store_fetch_meta("notion", False, len(skills), normalized_lang)
-        return skills
-    except SkillsSourceError as exc:
-        csv_path = _resolve_csv_path()
-        skills = _load_from_csv(normalized_lang)
-        logger.warning(
-            "skills_source=fallback_csv path=%s lang=%s count=%d reason=%s",
-            csv_path,
-            normalized_lang,
-            len(skills),
-            exc,
-        )
-        _store_fetch_meta("csv", True, len(skills), normalized_lang)
-        return skills
+    with _cache_lock:
+        _skills_cache[normalized_lang] = (time.time(), skills)
+
+    return skills
 
 
 def _store_fetch_meta(source: str, fallback: bool, count: int, lang: Lang) -> None:
     global _last_fetch_meta
     _last_fetch_meta = _FetchMeta(source=source, fallback=fallback, count=count, lang=lang)
+
+
+def _resolve_cache_ttl() -> int:
+    """Return configured cache TTL in seconds within sane bounds."""
+
+    raw_value = getattr(settings, "notion_cache_ttl_skills", 300)
+    try:
+        ttl = int(raw_value)
+    except (TypeError, ValueError):
+        ttl = 300
+    if ttl < 60:
+        return 60
+    if ttl > 3600:
+        return 3600
+    return ttl
 
 
 def _resolve_source_mode() -> SkillsSourceMode:
@@ -387,15 +423,25 @@ def _is_published(page: Dict[str, object]) -> bool:
     if not isinstance(props, dict):
         return True
 
+    publish_decisions: List[bool] = []
+
     for field in _PUBLISH_FIELDS:
-        prop = props.get(field)
+        prop = _get_prop_case_insensitive(props, field)
         if not isinstance(prop, dict):
             continue
         value = _publish_property_truthy(prop)
         if value is not None:
-            return value
+            publish_decisions.append(value)
 
-    return True
+    status_prop = _get_prop_case_insensitive(props, "Status")
+    if isinstance(status_prop, dict):
+        status_value = _publish_property_truthy(status_prop)
+        if status_value is not None:
+            publish_decisions.append(status_value)
+
+    if not publish_decisions:
+        return True
+    return any(publish_decisions)
 
 
 def _publish_property_truthy(prop: Dict[str, object]) -> Optional[bool]:
@@ -470,55 +516,34 @@ def _notion_page_to_skill(page: Dict[str, object], lang: Lang, index: int) -> Sk
 
     page_id = str(page.get("id") or "")
 
-    title_aliases = _TITLE_ALIASES.get(lang)
-    if not title_aliases:
-        raise SkillsSourceError(f"Unsupported language {lang}")
+    fallback_lang: Lang = "ru" if lang == "en" else "en"
 
-    title = _extract_text_field(
-        props,
-        title_aliases,
-        field="title",
-        page_id=page_id,
-        lang=lang,
-    )
+    title_candidates = list(_TITLE_ALIASES.get(lang, ()))
+    fallback_title_candidates = list(_TITLE_ALIASES.get(fallback_lang, ())) + ["Title", "Name"]
+
+    title = _first_text(props, title_candidates)
+    if not title:
+        title = _first_text(props, fallback_title_candidates)
+    if not title:
+        raise SkillsSourceError(f"Missing required title for Notion page {page_id or 'unknown'}")
 
     slug = _extract_slug(props, title)
 
-    short_aliases = _SHORT_ALIASES.get(lang, ())
-    short_value = _extract_text_field(
-        props,
-        short_aliases,
-        field="short",
-        page_id=page_id,
-        lang=lang,
-        slug=slug,
-        optional=True,
-    )
+    short_candidates = list(_SHORT_ALIASES.get(lang, ()))
+    fallback_short_candidates = list(_SHORT_ALIASES.get(fallback_lang, ())) + ["Short", "Summary", "Description"]
+
+    short_value = _first_text(props, short_candidates)
+    if not short_value:
+        short_value = _first_text(props, fallback_short_candidates)
     short = short_value or title
 
-    bullets_aliases = _BULLETS_ALIASES.get(lang, ())
-    bullets_text = _extract_text_field(
-        props,
-        bullets_aliases,
-        field="bullets",
-        page_id=page_id,
-        lang=lang,
-        slug=slug,
-        optional=True,
-    )
-    bullets = _split_lines(bullets_text)
+    bullets_candidates = list(_BULLETS_ALIASES.get(lang, ()))
+    fallback_bullets_candidates = list(_BULLETS_ALIASES.get(fallback_lang, ())) + ["Bullets", "Points", "List"]
+    bullets = _first_lines(props, bullets_candidates) or _first_lines(props, fallback_bullets_candidates)
 
-    examples_aliases = _EXAMPLES_ALIASES.get(lang, ())
-    examples_text = _extract_text_field(
-        props,
-        examples_aliases,
-        field="examples",
-        page_id=page_id,
-        lang=lang,
-        slug=slug,
-        optional=True,
-    )
-    examples = _split_lines(examples_text)
+    examples_candidates = list(_EXAMPLES_ALIASES.get(lang, ()))
+    fallback_examples_candidates = list(_EXAMPLES_ALIASES.get(fallback_lang, ())) + ["Examples", "Use Cases"]
+    examples = _first_lines(props, examples_candidates) or _first_lines(props, fallback_examples_candidates)
 
     tags = _extract_tags(props)
     order = _extract_order(props)
@@ -535,36 +560,69 @@ def _notion_page_to_skill(page: Dict[str, object], lang: Lang, index: int) -> Sk
     )
 
 
-def _extract_text_field(
-    props: Dict[str, Dict[str, object]],
-    candidates: Sequence[str],
-    *,
-    field: str,
-    page_id: str,
-    lang: Lang,
-    slug: Optional[str] = None,
-    optional: bool = False,
-) -> str:
+def _get_prop_case_insensitive(
+    props: Dict[str, Dict[str, object]], name: str
+) -> Optional[Dict[str, object]]:
+    """Return a property dict using case-insensitive lookup."""
+
+    if not isinstance(props, dict):
+        return None
+    lowered = name.lower()
+    for prop_name, prop_value in props.items():
+        if isinstance(prop_value, dict) and prop_name.lower() == lowered:
+            return prop_value
+    return None
+
+
+def _first_text(props: Dict[str, Dict[str, object]], candidates: Sequence[str]) -> str:
+    """Return the first non-empty text value for the provided property names."""
+
     for name in candidates:
-        value = _rich_text(props.get(name))
+        prop = _get_prop_case_insensitive(props, name)
+        value = _rich_text(prop)
         if value:
             return value
+    return ""
 
-    logger.warning(
-        "skills_source=notion lang=%s page_id=%s slug=%s field=%s missing_properties=%s",
-        lang,
-        page_id,
-        slug or "",
-        field,
-        ",".join(candidates),
-    )
 
-    if optional:
-        return ""
+def _prop_to_lines(prop: Optional[Dict[str, object]]) -> List[str]:
+    """Convert a Notion property to an array of cleaned lines."""
 
-    raise SkillsSourceError(
-        f"Missing required property '{field}' for Notion page {page_id or 'unknown'}"
-    )
+    if not prop or not isinstance(prop, dict):
+        return []
+    prop_type = prop.get("type")
+    segments: List[str] = []
+    if prop_type in {"rich_text", "title"}:
+        chunks = prop.get(prop_type)
+        if isinstance(chunks, list):
+            for chunk in chunks:
+                if not isinstance(chunk, dict):
+                    continue
+                text = chunk.get("plain_text")
+                if isinstance(text, str):
+                    segments.extend(_split_lines(text))
+                    continue
+                text_data = chunk.get("text")
+                if isinstance(text_data, dict):
+                    content = text_data.get("content")
+                    if isinstance(content, str):
+                        segments.extend(_split_lines(content))
+        else:
+            segments.extend(_split_lines(_rich_text(prop)))
+    else:
+        segments.extend(_split_lines(_rich_text(prop)))
+    return _dedupe_preserve(segments)
+
+
+def _first_lines(props: Dict[str, Dict[str, object]], candidates: Sequence[str]) -> List[str]:
+    """Return the first non-empty list of lines for the provided property names."""
+
+    for name in candidates:
+        prop = _get_prop_case_insensitive(props, name)
+        lines = _prop_to_lines(prop)
+        if lines:
+            return lines
+    return []
 
 
 def _extract_slug(props: Dict[str, Dict[str, object]], title: str) -> str:
@@ -637,24 +695,82 @@ def _rich_text(prop: Optional[Dict[str, object]]) -> str:
     if not prop or not isinstance(prop, dict):
         return ""
     prop_type = prop.get("type")
-    if prop_type not in {"rich_text", "title"}:
-        return ""
-    chunks = prop.get(prop_type)
-    if not isinstance(chunks, list):
-        return ""
-    parts: List[str] = []
-    for chunk in chunks:
-        if isinstance(chunk, dict):
+    if prop_type in {"rich_text", "title"}:
+        chunks = prop.get(prop_type)
+        if not isinstance(chunks, list):
+            return ""
+        parts: List[str] = []
+        for chunk in chunks:
+            if not isinstance(chunk, dict):
+                continue
             text = chunk.get("plain_text")
-            if isinstance(text, str):
+            if isinstance(text, str) and text.strip():
                 parts.append(text)
-    return "".join(parts).strip()
+                continue
+            text_data = chunk.get("text")
+            if isinstance(text_data, dict):
+                content = text_data.get("content")
+                if isinstance(content, str) and content.strip():
+                    parts.append(content)
+        return "".join(parts).strip()
+    if prop_type == "formula":
+        formula = prop.get("formula")
+        if isinstance(formula, dict):
+            for key in ("string", "number", "boolean"):
+                value = formula.get(key)
+                if value in (None, ""):
+                    continue
+                if isinstance(value, bool):
+                    return "true" if value else "false"
+                return str(value).strip()
+        return ""
+    if prop_type in {"select", "status"}:
+        selected = prop.get(prop_type)
+        if isinstance(selected, dict):
+            name = selected.get("name")
+            if isinstance(name, str):
+                return name.strip()
+        return ""
+    if prop_type == "checkbox":
+        checkbox = prop.get("checkbox")
+        if isinstance(checkbox, bool):
+            return "true" if checkbox else "false"
+        if checkbox is not None:
+            return str(checkbox).strip()
+        return ""
+    if prop_type == "number":
+        number = prop.get("number")
+        if number is None:
+            return ""
+        return str(number).strip()
+    if prop_type == "multi_select":
+        multi = prop.get("multi_select")
+        if isinstance(multi, list):
+            names = [
+                str(item.get("name", "")).strip()
+                for item in multi
+                if isinstance(item, dict) and str(item.get("name", "")).strip()
+            ]
+            return ", ".join(names)
+        return ""
+    plain_text = prop.get("plain_text")
+    if isinstance(plain_text, str):
+        return plain_text.strip()
+    return ""
 
 
 def _split_lines(value: str) -> List[str]:
     if not value:
         return []
-    return [line.strip() for line in value.replace("\r", "").split("\n") if line.strip()]
+    cleaned: List[str] = []
+    for raw_line in value.replace("\r", "").split("\n"):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        stripped = re.sub(r"^[\s\-\u2022•·\*]+", "", stripped).strip()
+        if stripped:
+            cleaned.append(stripped)
+    return cleaned
 
 
 def _split_tags(value: str) -> List[str]:
@@ -731,6 +847,13 @@ def _transliterate(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", normalized)
     normalized = normalized.encode("ascii", "ignore").decode("ascii")
     return normalized
+
+
+def clear_skills_cache() -> None:
+    """Clear cached skills data (intended for tests)."""
+
+    with _cache_lock:
+        _skills_cache.clear()
 
 
 

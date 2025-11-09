@@ -3,19 +3,20 @@ from __future__ import annotations
 
 from typing import List, Tuple, Union
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from app.core.settings import settings
 from app.core.logging import get_logger
 from app.providers.skills import (
-    SkillOut,
+    SkillsConfigurationError,
     SkillsSourceMode,
     SkillsUnavailableError,
     get_last_fetch_meta,
     get_skills,
 )
+from app.schemas.skills import SkillCard, SkillDetail
 
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
@@ -70,31 +71,47 @@ def _resolve_source_mode() -> SkillsSourceMode:
         return SkillsSourceMode.AUTO
 
 
-@router.get("", response_model=List[SkillOut])
+@router.get("", response_model=List[SkillCard])
 async def list_skills(
     request: Request,
     lang: str | None = Query(None, pattern="^(?:en|ru|EN|RU)$", description="Locale code"),
-) -> Union[List[SkillOut], JSONResponse]:
+) -> Union[List[SkillCard], JSONResponse]:
     normalized_lang, source = _resolve_request_lang(request, lang)
     logger.debug("skills.lang.resolve", extra={"resolved": normalized_lang, "source": source})
     source_mode = _resolve_source_mode()
 
     try:
-        return await run_in_threadpool(lambda: get_skills(normalized_lang))
+        raw_skills = await run_in_threadpool(lambda: get_skills(normalized_lang))
+    except SkillsConfigurationError:
+        logger.error("skills_configuration_missing")
+        return JSONResponse(status_code=500, content={"error": "skills_not_configured"})
     except SkillsUnavailableError as exc:
-        if source_mode is SkillsSourceMode.NOTION:
-            return JSONResponse(status_code=503, content={"error": "notion_failed"})
+        logger.warning(
+            "skills_fetch_failed",
+            extra={"source": source_mode.value, "lang": normalized_lang, "error": exc.__class__.__name__},
+        )
         if source_mode is SkillsSourceMode.CSV:
-            return JSONResponse(status_code=503, content={"error": "csv_failed"})
-        raise HTTPException(status_code=503, detail="skills_unavailable") from exc
+            return JSONResponse(status_code=503, content={"error": "skills_unavailable"})
+        return JSONResponse(status_code=502, content={"error": "notion_error"})
+
+    cards = [
+        SkillCard(
+            slug=item.slug,
+            title=item.title,
+            short=item.short or item.title,
+            tags=item.tags,
+        )
+        for item in raw_skills
+    ]
+    return cards
 
 
-@router.get("/{slug}", response_model=SkillOut)
+@router.get("/{slug}", response_model=SkillDetail)
 async def get_skill(
     request: Request,
     slug: str,
     lang: str | None = Query(None, pattern="^(?:en|ru|EN|RU)$", description="Locale code"),
-) -> Union[SkillOut, JSONResponse]:
+) -> Union[SkillDetail, JSONResponse]:
     normalized_lang, source = _resolve_request_lang(request, lang)
     logger.debug(
         "skills.lang.resolve.detail",
@@ -105,17 +122,29 @@ async def get_skill(
 
     try:
         skills = await run_in_threadpool(lambda: get_skills(normalized_lang))
+    except SkillsConfigurationError:
+        logger.error("skills_configuration_missing")
+        return JSONResponse(status_code=500, content={"error": "skills_not_configured"})
     except SkillsUnavailableError as exc:
-        if source_mode is SkillsSourceMode.NOTION:
-            return JSONResponse(status_code=503, content={"error": "notion_failed"})
+        logger.warning(
+            "skills_fetch_failed.detail",
+            extra={"source": source_mode.value, "lang": normalized_lang, "slug": slug, "error": exc.__class__.__name__},
+        )
         if source_mode is SkillsSourceMode.CSV:
-            return JSONResponse(status_code=503, content={"error": "csv_failed"})
-        raise HTTPException(status_code=503, detail="skills_unavailable") from exc
+            return JSONResponse(status_code=503, content={"error": "skills_unavailable"})
+        return JSONResponse(status_code=502, content={"error": "notion_error"})
 
     for item in skills:
         if item.slug.lower() == slug.strip().lower():
-            return item
-    raise HTTPException(status_code=404, detail="Skill not found")
+            return SkillDetail(
+                slug=item.slug,
+                title=item.title,
+                short=item.short or item.title,
+                tags=item.tags,
+                bullets=item.bullets,
+                examples=item.examples,
+            )
+    return JSONResponse(status_code=404, content={"error": "skill_not_found"})
 
 
 if settings.debug_skills_api:

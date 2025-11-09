@@ -20,6 +20,12 @@
       min(100svh, 100dvh, 100vh) - var(--modal-top-offset) - 24px
     );
   }
+  .clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 }
 
 html, body, #root { height: 100%; }

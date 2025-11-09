@@ -1,15 +1,17 @@
-export type Skill = {
-  id: string;
+export type SkillCard = {
   slug: string;
   title: string;
   short: string;
-  long?: string | null;
+  tags: string[];
+};
+
+export type SkillDetail = {
+  slug: string;
+  title: string;
+  short?: string | null;
+  tags: string[];
   bullets: string[];
   examples: string[];
-  tags: string[];
-  order?: number | null;
-  category?: string | null;
-  level?: string | null;
 };
 
 export type TaskItem = {

@@ -1,7 +1,7 @@
-import type { Skill } from '../types'
+import type { SkillDetail } from '../types'
 
 type SkillDetailProps = {
-  skill: Skill
+  skill: SkillDetail
   lang: 'ru' | 'en'
 }
 
@@ -50,11 +50,11 @@ export function SkillDetailView({ skill, lang }: SkillDetailProps) {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
             {sectionLabels.examples[lang]}
           </h2>
-          <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
+          <div className="space-y-2 text-sm leading-relaxed text-gray-700">
             {skill.examples.map((example, index) => (
-              <li key={index}>{example}</li>
+              <p key={index}>{example}</p>
             ))}
-          </ul>
+          </div>
         </section>
       ) : null}
     </div>

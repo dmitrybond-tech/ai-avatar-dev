@@ -107,6 +107,13 @@ VITE_DEFAULT_LANG=ru
 - `SKILLS_SOURCE=notion` enforces Notion only; the API responds with `503 {"error":"notion_failed"}` if it cannot read the database.
 - `SKILLS_SOURCE=csv` serves the CSV directly and skips Notion entirely. Override `SKILLS_CSV_PATH` when the file lives elsewhere.
 - `NOTION_TIMEOUT` controls the per-request timeout in seconds when Notion is enabled.
+- `NOTION_CACHE_TTL_SKILLS` sets the in-memory cache TTL (seconds, default `300`) that the API uses per-locale to avoid hitting Notion on every request.
+
+### Skills API (mini-app web)
+- `GET /api/skills?lang=en|ru` → array of `{ slug, title, short, tags }` sorted by the optional `Order` property (or title fallback). Missing localized fields fall back to the other locale or generic column before returning.
+- `GET /api/skills/{slug}?lang=en|ru` → `{ slug, title, short, tags, bullets, examples }`. Multiline rich-text is split into arrays, bullet markers like `-`/`•` are trimmed, and empty items are dropped.
+- Unpublished pages are filtered out when `Published` is unchecked or `Status` is not `Public`. Unknown slugs yield `404 {"error":"skill_not_found"}`. Misconfiguration returns `500 {"error":"skills_not_configured"}`.
+- Responses are cached per locale for `NOTION_CACHE_TTL_SKILLS` seconds. Set the env var across compose overrides so the API container picks it up (`infra/compose/*.yml` already forward it).
 
 ### Notion schema guidelines for skills
 - Titles are auto-detected via `Title`, `Name`, `Skill`, or `Название` — the API also honours language-specific suffixes like `Title EN`, `Title_RU`, and `TitleRU`.

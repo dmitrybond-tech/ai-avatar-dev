@@ -1,9 +1,16 @@
 import { apiUrl } from "../lib/apiBase.ts";
 import type { Locale } from "../shared/i18n/resolveLocale";
-import type { TasksStatusResponse, CalLinkResponse, ChatOut, Skill } from "../types";
+import type { TasksStatusResponse, CalLinkResponse, ChatOut, SkillCard, SkillDetail } from "../types";
 
 // New skills endpoints
-export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<Skill[]> {
+function ensureStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.length > 0);
+}
+
+export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<SkillCard[]> {
   const qs = `?lang=${lang}`;
   const r = await fetch(apiUrl(`/api/skills${qs}`), {
     signal,
@@ -16,10 +23,20 @@ export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<Ski
     throw new Error(`Failed to load skills (status ${r.status})`);
   }
   const data = await r.json();
-  return Array.isArray(data?.items) ? data.items : [];
+  if (!Array.isArray(data)) {
+    return [];
+  }
+  return data
+    .map((item) => ({
+      slug: typeof item?.slug === "string" ? item.slug : "",
+      title: typeof item?.title === "string" ? item.title : "",
+      short: typeof item?.short === "string" ? item.short : "",
+      tags: ensureStringArray(item?.tags),
+    }))
+    .filter((item) => item.slug && item.title);
 }
 
-export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortSignal): Promise<Skill> {
+export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortSignal): Promise<SkillDetail> {
   const qs = `?lang=${lang}`;
   const r = await fetch(apiUrl(`/api/skills/${encodeURIComponent(slug)}${qs}`), {
     signal,
@@ -31,7 +48,15 @@ export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortS
   if (!r.ok) {
     throw new Error(`Skill ${slug} not found (status ${r.status})`);
   }
-  return r.json();
+  const payload = await r.json();
+  return {
+    slug: typeof payload?.slug === "string" ? payload.slug : slug,
+    title: typeof payload?.title === "string" ? payload.title : slug,
+    short: typeof payload?.short === "string" ? payload.short : undefined,
+    tags: ensureStringArray(payload?.tags),
+    bullets: ensureStringArray(payload?.bullets),
+    examples: ensureStringArray(payload?.examples),
+  };
 }
 
 export async function getTasks(): Promise<TasksStatusResponse> {
