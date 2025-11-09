@@ -1,5 +1,9 @@
 # Change Log
 
+## Unreleased
+
+- Fix `/api/skills` Notion client compatibility across SDK versions, ensuring auto-mode falls back to CSV when client construction fails and adding regression tests.
+
 ## v0.1.0 - Initial Scaffold (2025-10-15)
 
 ### 1. Root Configuration

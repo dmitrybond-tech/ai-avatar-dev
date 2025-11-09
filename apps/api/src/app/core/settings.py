@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     notion_skills_db_id: str = ""
     notion_timeout: int = 10
     notion_cache_ttl_skills: int = 300
+    notion_cache_ttl_tasks: int = 300
 
     # Skills
     skills_source: str = "auto"

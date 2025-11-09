@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.logging import get_logger
 from app.core.settings import settings
+from app.integrations.notion_client import get_notion_client as build_notion_client
 
 Lang = Literal["en", "ru"]
 
@@ -176,6 +177,14 @@ def log_skills_source_configuration() -> None:
         db_id_present,
         csv_path,
     )
+    if settings.debug_skills_api:
+        logger.info(
+            "skills_env_debug mode=%s notion_api_key_len=%d notion_db_configured=%s skills_source=%s",
+            source.value,
+            notion_key_len,
+            db_id_present,
+            settings.skills_source or "auto",
+        )
 
 
 def get_last_fetch_meta() -> _FetchMeta:
@@ -241,17 +250,18 @@ def get_skills(lang: Lang = "en") -> List[SkillOut]:
         try:
             skills = _load_from_notion(normalized_lang)
             _store_fetch_meta("notion", False, len(skills), normalized_lang)
-        except SkillsNotionError as exc:
+        except Exception as exc:
             csv_path = _resolve_csv_path()
             try:
                 skills = _load_from_csv(normalized_lang)
-            except SkillsCsvError:
+            except SkillsCsvError as csv_exc:
                 _store_fetch_meta("notion", False, 0, normalized_lang)
                 logger.warning(
-                    "skills_source=fallback_csv_failed path=%s lang=%s reason=%s",
+                    "skills_source=fallback_csv_failed path=%s lang=%s original_error=%s fallback_error=%s",
                     csv_path,
                     normalized_lang,
-                    exc,
+                    exc.__class__.__name__,
+                    csv_exc,
                 )
                 raise
             logger.warning(
@@ -259,7 +269,7 @@ def get_skills(lang: Lang = "en") -> List[SkillOut]:
                 csv_path,
                 normalized_lang,
                 len(skills),
-                exc,
+                exc.__class__.__name__,
             )
             _store_fetch_meta("csv", True, len(skills), normalized_lang)
 
@@ -399,8 +409,15 @@ def _get_notion_client() -> Client:
         raise SkillsConfigurationError("NOTION_API_KEY is not configured")
 
     timeout_seconds = max(int(settings.notion_timeout or 10), 1)
-    _notion_client = Client(auth=api_key, timeout_ms=timeout_seconds * 1000)
-    return _notion_client
+
+    try:
+        client = build_notion_client(api_key, timeout_seconds)
+    except ValueError as exc:  # pragma: no cover - sanitized above
+        raise SkillsConfigurationError(str(exc)) from exc
+    except Exception as exc:
+        raise SkillsNotionError("Failed to construct Notion client") from exc
+    _notion_client = client
+    return client
 
 
 def _load_from_notion(lang: Lang) -> List[SkillOut]:

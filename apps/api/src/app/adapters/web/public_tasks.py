@@ -1,6 +1,8 @@
 """Public tasks router for Notion integration."""
-from typing import List
-from fastapi import APIRouter, HTTPException, Depends, Header
+from __future__ import annotations
+from typing import List, Optional
+
+from fastapi import APIRouter, HTTPException, Header, Query, Response
 from app.schemas.public_tasks import (
     PublicTaskOut,
     PublicTaskCreate,
@@ -8,6 +10,7 @@ from app.schemas.public_tasks import (
     CommentRequest,
 )
 from app.integrations.notion_public_tasks import (
+    get_tasks_cache_snapshot,
     query_public_tasks,
     create_task,
     update_task,
@@ -35,13 +38,31 @@ def verify_auth(authorization: str = Header(None)) -> None:
         raise HTTPException(status_code=403, detail="Invalid token")
 
 
+def _resolve_locale_param(locale: Optional[str], accept_language: Optional[str]) -> Optional[str]:
+    if locale:
+        return locale
+    if accept_language:
+        return accept_language.split(",", 1)[0]
+    return None
+
+
 @router.get("/public", response_model=List[PublicTaskOut])
-async def list_public_tasks(limit: int = 100):
+async def list_public_tasks(
+    response: Response,
+    limit: int = 100,
+    locale: Optional[str] = Query(default=None, min_length=1),
+    accept_language: Optional[str] = Header(default=None),
+):
     """List public tasks from Notion database."""
     try:
         if limit < 1 or limit > 1000:
             raise HTTPException(status_code=400, detail="Limit must be between 1 and 1000")
-        tasks = query_public_tasks(limit=limit)
+        resolved_locale = _resolve_locale_param(locale, accept_language)
+        cache_meta: dict[str, object] = {}
+        tasks = query_public_tasks(limit=limit, locale=resolved_locale, meta=cache_meta)
+        if cache_meta:
+            header_value = '{"stale": true}' if cache_meta.get("stale") else '{"stale": false}'
+            response.headers["X-Tasks-Cache"] = header_value
         return tasks
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -148,4 +169,23 @@ async def add_task_comment(
     except Exception as e:
         logger.error(f"Error adding comment: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/_debug")
+async def tasks_debug(locale: Optional[str] = Query(default=None, min_length=1)):
+    """Expose tasks cache/debug info without hitting Notion."""
+    resolved_locale = _resolve_locale_param(locale, None)
+    snapshot = get_tasks_cache_snapshot(resolved_locale)
+    raw_ttl = getattr(settings, "notion_cache_ttl_tasks", 300)
+    try:
+        cache_ttl = int(raw_ttl)
+    except (TypeError, ValueError):
+        cache_ttl = raw_ttl
+    return {
+        "has_api_key": bool((settings.notion_api_key or "").strip()),
+        "has_db_id": bool((settings.notion_public_tasks_db_id or "").strip()),
+        "cache_ttl": cache_ttl,
+        "count": snapshot["count"],
+        "last_updated": snapshot["last_updated"],
+    }
 

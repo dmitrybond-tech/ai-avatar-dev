@@ -1,12 +1,26 @@
 """Notion integration for Public On-Board Tasks."""
-from datetime import datetime
-from typing import Optional, List
-from notion_client import Client, APIResponseError
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone, timedelta
+from threading import Lock
+from typing import Dict, List, Optional
+
+from httpx import RequestError
+from notion_client import APIResponseError, Client
 from pydantic import BaseModel, Field, field_validator
+
 from app.core.settings import settings
 from app.core.logging import get_logger
+from app.integrations.notion_client import (
+    clear_client_cache as clear_shared_notion_cache,
+    get_notion_client as build_notion_client,
+)
 
 logger = get_logger(__name__)
+
+DEFAULT_LOCALE_KEY = "default"
 
 # Mapping constants
 STATUS_MAP = {"Backlog", "In Progress", "Review", "Blocked", "Done"}
@@ -24,21 +38,36 @@ PROP_LAST_UPDATED = "Last Updated"
 PROP_TAGS = "Tags"
 PROP_SOURCE = "Source"
 
-# Initialize Notion client
+# Initialize Notion client + cache state
 _notion_client: Optional[Client] = None
+_notion_client_lock = Lock()
+_tasks_cache: Dict[str, "_TasksCacheEntry"] = {}
+_tasks_cache_lock = Lock()
 
 
 def get_notion_client() -> Client:
     """Get or create Notion client instance."""
     global _notion_client
-    if _notion_client is None:
-        if not settings.notion_api_key:
+    if _notion_client is not None:
+        return _notion_client
+
+    with _notion_client_lock:
+        if _notion_client is not None:
+            return _notion_client
+
+        api_key = (settings.notion_api_key or "").strip()
+        if not api_key:
             raise ValueError("NOTION_API_KEY is not set")
-        _notion_client = Client(
-            auth=settings.notion_api_key,
-            timeout_ms=settings.notion_timeout * 1000,
-        )
-    return _notion_client
+
+        timeout = getattr(settings, "notion_timeout", None)
+        try:
+            client = build_notion_client(api_key, timeout)
+        except Exception as exc:
+            logger.error("Failed to initialize Notion client: %s", exc, exc_info=True)
+            raise
+
+        _notion_client = client
+        return client
 
 
 def compute_progress(scope: int, done: int) -> int:
@@ -103,6 +132,68 @@ class PublicTaskOut(BaseModel):
     last_updated: str
     tags: List[str] = Field(default_factory=list)
     url: str
+
+
+@dataclass(slots=True)
+class _TasksCacheEntry:
+    items: List[PublicTaskOut]
+    fetched_at: datetime
+    expires_at: datetime
+    fetched_limit: int
+
+
+def _cache_ttl_seconds() -> int:
+    raw_value = getattr(settings, "notion_cache_ttl_tasks", 300)
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return 300
+    return max(value, 0)
+
+
+def _normalize_locale(locale: Optional[str]) -> str:
+    if not locale:
+        return DEFAULT_LOCALE_KEY
+    normalized = locale.strip().lower()
+    if not normalized:
+        return DEFAULT_LOCALE_KEY
+    normalized = normalized.split(",", 1)[0]
+    return (normalized.split("-", 1)[0] or DEFAULT_LOCALE_KEY).strip() or DEFAULT_LOCALE_KEY
+
+
+def _get_cache_entry(locale: str) -> Optional[_TasksCacheEntry]:
+    with _tasks_cache_lock:
+        return _tasks_cache.get(locale)
+
+
+def _save_cache_entry(locale: str, entry: _TasksCacheEntry) -> None:
+    with _tasks_cache_lock:
+        _tasks_cache[locale] = entry
+
+
+def _cache_snapshot(locale: str) -> Dict[str, Optional[str]]:
+    entry = _get_cache_entry(locale)
+    if not entry:
+        return {"count": 0, "last_updated": None}
+    return {
+        "count": len(entry.items),
+        "last_updated": entry.fetched_at.isoformat(),
+    }
+
+
+def get_tasks_cache_snapshot(locale: Optional[str] = None) -> Dict[str, Optional[str]]:
+    """Return cache statistics for debug endpoints."""
+    return _cache_snapshot(_normalize_locale(locale))
+
+
+def reset_tasks_cache() -> None:
+    """Reset cached tasks and Notion client (testing only)."""
+    global _notion_client
+    with _tasks_cache_lock:
+        _tasks_cache.clear()
+    with _notion_client_lock:
+        _notion_client = None
+    clear_shared_notion_cache()
 
 
 class PublicTaskCreate(BaseModel):
@@ -211,52 +302,151 @@ def _page_to_public_task_out(page: dict) -> PublicTaskOut:
     )
 
 
-def query_public_tasks(limit: int = 100) -> List[PublicTaskOut]:
-    """Query public tasks from Notion database."""
-    client = get_notion_client()
-    db_id = settings.notion_public_tasks_db_id
+def _set_meta(meta: Optional[Dict[str, object]], **values: object) -> None:
+    if meta is not None:
+        meta.update(values)
 
+
+def _should_retry(exc: Exception) -> bool:
+    if isinstance(exc, APIResponseError):
+        status = getattr(exc, "status", None) or getattr(exc, "status_code", None)
+        if status is None:
+            response = getattr(exc, "response", None)
+            status = getattr(response, "status_code", None) if response else None
+        if isinstance(status, int) and (status == 429 or 500 <= status < 600):
+            return True
+        code = (getattr(exc, "code", "") or "").lower()
+        if code in {"rate_limited", "service_unavailable", "internal_server_error"}:
+            return True
+    if isinstance(exc, RequestError):
+        return True
+    return False
+
+
+def _execute_query_with_retries(client: Client, query_params: Dict[str, object]) -> Dict[str, object]:
+    attempts = 3
+    for attempt in range(attempts):
+        try:
+            return client.databases.query(**query_params)
+        except Exception as exc:
+            should_retry = _should_retry(exc)
+            if attempt == attempts - 1 or not should_retry:
+                raise
+            wait_seconds = min(4.0, 0.5 * (2 ** attempt))
+            logger.warning(
+                "Retrying Notion tasks query",
+                extra={"attempt": attempt + 1, "delay": wait_seconds, "error": str(exc)},
+            )
+            time.sleep(wait_seconds)
+    raise RuntimeError("Failed to query Notion tasks")  # pragma: no cover - defensive
+
+
+def _fetch_public_tasks(client: Client, db_id: str, limit: int) -> List[PublicTaskOut]:
+    results: List[dict] = []
+    has_more = True
+    start_cursor: Optional[str] = None
+
+    while has_more and len(results) < limit:
+        query_params: Dict[str, object] = {
+            "database_id": db_id,
+            "filter": {
+                "property": PROP_PUBLIC,
+                "checkbox": {"equals": True},
+            },
+            "sorts": [
+                {"property": PROP_LAST_UPDATED, "direction": "descending"},
+                {"property": PROP_REVIEW_AT, "direction": "ascending"},
+            ],
+            "page_size": min(limit, 100),
+        }
+        if start_cursor:
+            query_params["start_cursor"] = start_cursor
+
+        response = _execute_query_with_retries(client, query_params)
+        pages = response.get("results", [])
+        if isinstance(pages, list):
+            results.extend(pages)
+
+        has_more = bool(response.get("has_more", False))
+        start_cursor = response.get("next_cursor")
+
+    return [_page_to_public_task_out(page) for page in results[:limit]]
+
+
+def query_public_tasks(
+    limit: int = 100,
+    *,
+    locale: Optional[str] = None,
+    meta: Optional[Dict[str, object]] = None,
+) -> List[PublicTaskOut]:
+    """Query public tasks from Notion database with caching and stale fallback."""
+    resolved_locale = _normalize_locale(locale)
+    db_id = (settings.notion_public_tasks_db_id or "").strip()
     if not db_id:
         raise ValueError("NOTION_PUBLIC_TASKS_DB_ID is not set")
 
+    client = get_notion_client()
+    ttl = _cache_ttl_seconds()
+    now = datetime.now(timezone.utc)
+    cache_entry = _get_cache_entry(resolved_locale)
+
+    if cache_entry and cache_entry.expires_at > now and cache_entry.fetched_limit >= limit:
+        _set_meta(
+            meta,
+            stale=False,
+            source="cache",
+            last_updated=cache_entry.fetched_at.isoformat(),
+            count=len(cache_entry.items),
+        )
+        return cache_entry.items[:limit]
+
+    stale_candidate = cache_entry if cache_entry and cache_entry.fetched_limit >= limit else None
+
     try:
-        results = []
-        has_more = True
-        start_cursor = None
-
-        while has_more and len(results) < limit:
-            query_params = {
-                "database_id": db_id,
-                "filter": {
-                    "property": PROP_PUBLIC,
-                    "checkbox": {"equals": True},
-                },
-                "sorts": [
-                    {"property": PROP_LAST_UPDATED, "direction": "descending"},
-                    {"property": PROP_REVIEW_AT, "direction": "ascending"},
-                ],
-                "page_size": min(limit, 100),  # Notion API limit
-            }
-            if start_cursor:
-                query_params["start_cursor"] = start_cursor
-
-            response = client.databases.query(**query_params)
-            pages = response.get("results", [])
-            results.extend(pages)
-
-            has_more = response.get("has_more", False)
-            start_cursor = response.get("next_cursor")
-
-        # Convert to PublicTaskOut and limit results
-        tasks = [_page_to_public_task_out(page) for page in results[:limit]]
-        return tasks
-
-    except APIResponseError as e:
-        logger.error(f"Notion API error: {e.code} - {e.message} (request_id: {e.request_id})")
-        raise ValueError(f"Notion API error: {e.message}") from e
-    except Exception as e:
-        logger.error(f"Error querying Notion tasks: {e}")
+        tasks = _fetch_public_tasks(client, db_id, limit)
+    except Exception as exc:
+        if stale_candidate and stale_candidate.items and _should_retry(exc):
+            logger.warning(
+                "Serving stale Notion tasks",
+                extra={"locale": resolved_locale, "error": str(exc)},
+            )
+            _set_meta(
+                meta,
+                stale=True,
+                source="cache",
+                last_updated=stale_candidate.fetched_at.isoformat(),
+                count=len(stale_candidate.items),
+                error=str(exc),
+            )
+            return stale_candidate.items[:limit]
+        if isinstance(exc, APIResponseError):
+            logger.error(
+                "Notion API error: %s - %s (request_id: %s)",
+                exc.code,
+                exc.message,
+                getattr(exc, "request_id", None),
+            )
+            raise ValueError(f"Notion API error: {exc.message}") from exc
+        logger.error("Error querying Notion tasks: %s", exc, exc_info=True)
         raise
+
+    fetched_at = datetime.now(timezone.utc)
+    expires_at = fetched_at + timedelta(seconds=ttl) if ttl else fetched_at
+    new_entry = _TasksCacheEntry(
+        items=tasks,
+        fetched_at=fetched_at,
+        expires_at=expires_at,
+        fetched_limit=max(limit, len(tasks)),
+    )
+    _save_cache_entry(resolved_locale, new_entry)
+    _set_meta(
+        meta,
+        stale=False,
+        source="notion",
+        last_updated=fetched_at.isoformat(),
+        count=len(tasks),
+    )
+    return tasks[:limit]
 
 
 def create_task(

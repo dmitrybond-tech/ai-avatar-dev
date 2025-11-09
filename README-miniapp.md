@@ -53,6 +53,8 @@ Notes:
 Skills + Tasks hardening (server):
 - GET `/skills`, `/skills/{slug}` and aliases under `/api/skills/...`
 - Public tasks available at `/api/tasks/public` + aliases `/api/public`, `/public`
+- Tasks cache TTL is controlled via `NOTION_CACHE_TTL_TASKS` (seconds, default `300`). When Notion is temporarily unavailable and cached data exists, the API returns the last snapshot with header `X-Tasks-Cache: {"stale": true}`.
+- Inspect tasks configuration via `GET /api/tasks/_debug` → `{ has_api_key, has_db_id, cache_ttl, count, last_updated }` (no Notion call).
 - Unified health: `GET /healthz` → `{ "ok": true }`
 - Compose final override: `infra/compose/miniapp.final.override.yml` sets NOTION_* and uvicorn CMD
 # Telegram Mini App — Rule-Based Personal Assistant (RU/EN)

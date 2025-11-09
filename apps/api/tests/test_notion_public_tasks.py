@@ -11,6 +11,7 @@ from app.integrations.notion_public_tasks import (
     assert_schema,
     compute_progress,
     get_notion_client,
+    reset_tasks_cache,
 )
 
 
@@ -47,11 +48,15 @@ class TestComputeProgress:
 class TestQueryPublicTasks:
     """Test querying public tasks."""
 
+    def setup_method(self):
+        reset_tasks_cache()
+
     @patch("app.integrations.notion_public_tasks.get_notion_client")
     @patch("app.integrations.notion_public_tasks.settings")
     def test_query_public_tasks_success(self, mock_settings, mock_get_client):
         """Test successful query of public tasks."""
         mock_settings.notion_public_tasks_db_id = "test-db-id"
+        mock_settings.notion_cache_ttl_tasks = 300
         mock_client = Mock()
         mock_get_client.return_value = mock_client
 
@@ -94,6 +99,7 @@ class TestQueryPublicTasks:
     def test_query_public_tasks_no_db_id(self, mock_settings, mock_get_client):
         """Test query fails when DB ID is not set."""
         mock_settings.notion_public_tasks_db_id = ""
+        mock_settings.notion_cache_ttl_tasks = 300
         with pytest.raises(ValueError, match="NOTION_PUBLIC_TASKS_DB_ID is not set"):
             query_public_tasks()
 
@@ -102,19 +108,67 @@ class TestQueryPublicTasks:
     def test_query_public_tasks_api_error(self, mock_settings, mock_get_client):
         """Test query handles API errors."""
         mock_settings.notion_public_tasks_db_id = "test-db-id"
+        mock_settings.notion_cache_ttl_tasks = 300
         mock_client = Mock()
         mock_get_client.return_value = mock_client
 
-        error = APIResponseError(
-            code="object_not_found",
-            message="Database not found",
-            request_id="test-request-id",
-        )
+        error = APIResponseError.__new__(APIResponseError)
+        error.code = "object_not_found"
+        error.message = "Database not found"
+        error.request_id = "test-request-id"
         mock_client.databases.query.side_effect = error
 
         with pytest.raises(ValueError, match="Notion API error"):
             query_public_tasks()
 
+
+    @patch("app.integrations.notion_public_tasks.get_notion_client")
+    @patch("app.integrations.notion_public_tasks.settings")
+    def test_query_public_tasks_stale_fallback(self, mock_settings, mock_get_client):
+        """Test stale cache is served when Notion transiently fails."""
+        reset_tasks_cache()
+        mock_settings.notion_public_tasks_db_id = "test-db-id"
+        mock_settings.notion_cache_ttl_tasks = 0
+
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+
+        first_response = {
+            "results": [
+                {
+                    "id": "page-1",
+                    "last_edited_time": "2024-01-01T00:00:00.000Z",
+                    "properties": {
+                        "Name": {"type": "title", "title": [{"plain_text": "Cached Task"}]},
+                        "Status": {"type": "select", "select": {"name": "Backlog"}},
+                        "Scope": {"type": "number", "number": 1},
+                        "Done": {"type": "number", "number": 0},
+                        "Progress %": {"type": "number", "number": 0},
+                        "Review At": {"type": "date", "date": None},
+                        "Tags": {"type": "multi_select", "multi_select": []},
+                    },
+                }
+            ],
+            "has_more": False,
+        }
+        rate_limit_errors = []
+        for _ in range(3):
+            err = APIResponseError.__new__(APIResponseError)
+            err.code = "rate_limited"
+            err.message = "Too many requests"
+            err.request_id = "req-1"
+            rate_limit_errors.append(err)
+        mock_client.databases.query.side_effect = [first_response, *rate_limit_errors]
+
+        meta_first: dict[str, object] = {}
+        tasks = query_public_tasks(limit=1, locale="en", meta=meta_first)
+        assert tasks[0].title == "Cached Task"
+        assert meta_first.get("stale") is False
+
+        meta_second: dict[str, object] = {}
+        tasks_stale = query_public_tasks(limit=1, locale="en", meta=meta_second)
+        assert tasks_stale == tasks
+        assert meta_second.get("stale") is True
 
 class TestCreateTask:
     """Test creating tasks."""
