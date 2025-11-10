@@ -1,15 +1,21 @@
-import { apiUrl, CHAT_ASK_URL, CHAT_CONFIG_URL, CHAT_EXPORT_URL } from "../lib/apiBase.ts";
+import { apiFetch, apiUrl, getApiBaseUrl } from "../lib/api.ts";
 import type { Locale } from "../shared/i18n/resolveLocale";
 import type {
   TasksStatusResponse,
   CalLinkResponse,
-  ChatOut,
   ChatConfig,
   ChatAskPayload,
   ChatExportPayload,
+  ChatAskResponse,
   SkillCard,
   SkillDetail,
+  ChatMessageDto,
 } from "../types";
+
+export const CONFIG_ENDPOINT = "/config";
+export const ASK_ENDPOINT = "/ask";
+export const EXPORT_TELEGRAM_ENDPOINT = "/export/telegram";
+export const CLIENT_LOG_ENDPOINT = "/client-log";
 
 // New skills endpoints
 function ensureStringArray(value: unknown): string[] {
@@ -21,7 +27,7 @@ function ensureStringArray(value: unknown): string[] {
 
 export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<SkillCard[]> {
   const qs = `?lang=${lang}`;
-  const r = await fetch(apiUrl(`/api/skills${qs}`), {
+  const r = await fetch(apiUrl(`/skills${qs}`), {
     signal,
     headers: {
       "X-Locale": lang,
@@ -47,7 +53,7 @@ export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<Ski
 
 export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortSignal): Promise<SkillDetail> {
   const qs = `?lang=${lang}`;
-  const r = await fetch(apiUrl(`/api/skills/${encodeURIComponent(slug)}${qs}`), {
+  const r = await fetch(apiUrl(`/skills/${encodeURIComponent(slug)}${qs}`), {
     signal,
     headers: {
       "X-Locale": lang,
@@ -79,17 +85,18 @@ export async function getCal(): Promise<CalLinkResponse> {
 }
 
 export async function getChatConfig(signal?: AbortSignal): Promise<ChatConfig> {
-  const r = await fetch(CHAT_CONFIG_URL, { signal });
+  const r = await apiFetch(CONFIG_ENDPOINT, { signal });
   if (!r.ok) {
     throw new Error(`Failed to load chat config (status ${r.status})`);
   }
   const payload = await r.json();
   return {
-    persona: typeof payload?.persona === "string" ? payload.persona : "dima",
-    smart_chat: Boolean(payload?.smart_chat),
-    rag_mode: payload?.rag_mode === "llm" ? "llm" : "extractive",
-    provider: typeof payload?.provider === "string" ? payload.provider : "openai",
-    model: typeof payload?.model === "string" ? payload.model : "",
+    persona: typeof payload?.persona === "string" && payload.persona.trim().length > 0 ? payload.persona : "dima",
+    llmAvailable: Boolean(payload?.llmAvailable),
+    notion: Boolean(payload?.notion),
+    csvFallback: Boolean(payload?.csvFallback),
+    telegramExport: Boolean(payload?.telegramExport),
+    model: typeof payload?.model === "string" && payload.model.trim().length > 0 ? payload.model : undefined,
   };
 }
 
@@ -107,19 +114,39 @@ export class ChatRequestError extends Error {
   }
 }
 
-export async function postChat(payload: ChatAskPayload, signal?: AbortSignal): Promise<ChatOut> {
+const allowedRoles = new Set<ChatMessageDto["role"]>(["user", "assistant", "system"]);
+
+const sanitizeMessages = (messages: ChatMessageDto[]): ChatMessageDto[] => {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .map((message) => {
+      if (!message || typeof message !== "object") return null;
+      const role = allowedRoles.has(message.role) ? message.role : "user";
+      const content = typeof message.content === "string" ? message.content.trim() : "";
+      if (!content) return null;
+      return { role, content };
+    })
+    .filter((message): message is ChatMessageDto => message !== null);
+};
+
+export async function postChat(payload: ChatAskPayload, signal?: AbortSignal): Promise<ChatAskResponse> {
   let r: Response;
+  const sanitizedMessages = sanitizeMessages(payload.messages);
+  const body = JSON.stringify({
+    ...payload,
+    messages: sanitizedMessages,
+  });
   try {
-    r = await fetch(CHAT_ASK_URL, {
+    r = await apiFetch(ASK_ENDPOINT, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
+      body,
       signal,
     });
   } catch (networkErr) {
     throw new ChatRequestError(
       0,
-      CHAT_ASK_URL,
+      `${getApiBaseUrl()}${ASK_ENDPOINT}`,
       networkErr instanceof Error ? networkErr.message : String(networkErr),
     );
   }
@@ -131,29 +158,36 @@ export async function postChat(payload: ChatAskPayload, signal?: AbortSignal): P
       text = "";
     }
     const snippet = text.length > 200 ? `${text.slice(0, 200)}…` : text;
-    throw new ChatRequestError(r.status, r.url || CHAT_ASK_URL, snippet.trim());
+    throw new ChatRequestError(r.status, r.url || `${getApiBaseUrl()}${ASK_ENDPOINT}`, snippet.trim());
   }
   const data = await r.json();
   return {
-    reply: typeof data?.reply === "string" && data.reply.trim().length > 0 ? data.reply : "",
-    mode: data?.mode === "llm" ? "llm" : "stub",
-    session_id: typeof data?.session_id === "string" ? data.session_id : "",
-    persona: typeof data?.persona === "string" ? data.persona : "dima",
+    answer: typeof data?.answer === "string" ? data.answer : "",
+    sources: ensureStringArray(data?.sources),
+    used_llm: Boolean(data?.used_llm),
+    persona: typeof data?.persona === "string" && data.persona.trim().length > 0 ? data.persona : undefined,
   };
 }
 
 export async function postChatExport(payload: ChatExportPayload): Promise<void> {
-  const r = await fetch(CHAT_EXPORT_URL, {
+  const sanitizedMessages = sanitizeMessages(payload.messages);
+  const r = await apiFetch(EXPORT_TELEGRAM_ENDPOINT, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      messages: sanitizedMessages,
+    }),
   });
   if (!r.ok) {
     const snippet = await r.text().catch(() => "");
-    throw new ChatRequestError(r.status, r.url || CHAT_EXPORT_URL, snippet.slice(0, 200));
+    throw new ChatRequestError(
+      r.status,
+      r.url || `${getApiBaseUrl()}${EXPORT_TELEGRAM_ENDPOINT}`,
+      snippet.slice(0, 200),
+    );
   }
 }
-
 
 type ClientLogPayload = {
   ua: string;
@@ -167,7 +201,7 @@ export async function postClientLog(payload: ClientLogPayload): Promise<void> {
     // Only attempt when inside Telegram WebView (UA or SDK present)
     const isTG = /Telegram/i.test(navigator.userAgent) || !!(window as any)?.Telegram?.WebApp;
     if (!isTG) return;
-    await fetch(apiUrl('/api/client-log'), {
+    await apiFetch(CLIENT_LOG_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

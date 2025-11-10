@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChatRequestError, getChatConfig, postChat, postChatExport } from "../api/client";
-import type { ChatConfig, ChatOut } from "../types";
+import { ChatRequestError, getChatConfig, postChat, postChatExport, EXPORT_TELEGRAM_ENDPOINT } from "../api/client";
+import type { ChatAskPayload, ChatConfig, ChatExportPayload, ChatMessageDto } from "../types";
 import type { Locale } from "../shared/i18n/resolveLocale";
 import { useChatSessionId } from "../hooks/useChatSessionId";
 import { getTelegramWebApp, isTelegramWebView } from "../lib/tg";
-import { CHAT_EXPORT_URL } from "../lib/apiBase";
+import { apiUrl } from "../lib/api";
 
 type Msg = {
   id: string;
   role: "user" | "assistant";
   text: string;
-  mode?: ChatOut["mode"];
+  usedLLM?: boolean;
+  sources?: string[];
+  isError?: boolean;
 };
+
+type ErrorState = { message: string; detail?: string; status?: number };
 
 type ChatBoxProps = { lang: Locale };
 
@@ -19,12 +23,20 @@ const INTRO_RU = "Привет! Я ассистент Димы. Подскажу
 const INTRO_EN = "Hi! I’m Dima’s assistant. I can share what he is working on and how he can help.";
 const HISTORY_PREFIX = "chat_history:";
 
+const normalizeStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.length > 0);
+};
+
 const fallbackConfig: ChatConfig = {
   persona: "dima",
-  smart_chat: false,
-  rag_mode: "extractive",
-  provider: "openai",
-  model: "",
+  llmAvailable: false,
+  notion: false,
+  csvFallback: true,
+  telegramExport: false,
+  model: undefined,
 };
 
 const initialHistory = (text: string): Msg[] => [{ id: "intro", role: "assistant", text }];
@@ -42,9 +54,11 @@ const loadHistory = (key: string, intro: string): Msg[] => {
       const role = item.role === "assistant" ? "assistant" : item.role === "user" ? "user" : null;
       const id = typeof item.id === "string" ? item.id : `${Date.now()}-${cleaned.length}`;
       const text = typeof item.text === "string" ? item.text : "";
-      const mode = item.mode === "llm" ? "llm" : item.mode === "stub" ? "stub" : undefined;
+      const usedLLM = item.usedLLM === true || item.mode === "llm";
+      const sources = normalizeStringArray(item.sources);
+      const isError = item.isError === true;
       if (!role || !text) continue;
-      cleaned.push({ id, role, text, mode });
+      cleaned.push({ id, role, text, usedLLM, sources, isError });
     }
     return cleaned.length > 0 ? cleaned : initialHistory(intro);
   } catch {
@@ -82,7 +96,7 @@ export function ChatBox({ lang }: ChatBoxProps) {
   const [exporting, setExporting] = useState(false);
   const [smartEnabled, setSmartEnabled] = useState(false);
   const [config, setConfig] = useState<ChatConfig>(fallbackConfig);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorState | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [tgInitData, setTgInitData] = useState<string | null>(null);
   const exportedRef = useRef(false);
@@ -117,8 +131,7 @@ export function ChatBox({ lang }: ChatBoxProps) {
         if (!active) return;
         setConfig(cfg);
         setPersona(cfg.persona || "dima");
-        const enableSmart = cfg.smart_chat && cfg.rag_mode === "llm";
-        setSmartEnabled(enableSmart);
+        setSmartEnabled(cfg.llmAvailable);
       })
       .catch(() => {
         if (!active) return;
@@ -159,8 +172,7 @@ export function ChatBox({ lang }: ChatBoxProps) {
   }, []);
 
   useEffect(() => {
-    const smartAvailable = config.smart_chat && config.rag_mode === "llm";
-    if (!smartAvailable && smartEnabled) {
+    if (!config.llmAvailable && smartEnabled) {
       setSmartEnabled(false);
     }
   }, [config, smartEnabled]);
@@ -170,11 +182,26 @@ export function ChatBox({ lang }: ChatBoxProps) {
     const handler = () => {
       if (exportedRef.current || !hasUserMessages) return;
       if (typeof navigator.sendBeacon !== "function") return;
-      const payload: { session_id: string; tg_init_data?: string | null } = { session_id };
-      if (tgInitData) payload.tg_init_data = tgInitData;
+      if (!config.telegramExport) return;
+      const conversation: ChatMessageDto[] = msgs
+        .filter((msg) => msg.role === "assistant" || msg.role === "user")
+        .map((msg) => ({
+          role: msg.role,
+          content: msg.text,
+        }));
+      if (conversation.length === 0) return;
+      const payload = {
+        messages: conversation,
+        meta: {
+          session_id: sessionId,
+          lang,
+          persona,
+          tg_init_data: tgInitData ?? undefined,
+        },
+      };
       try {
         const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-        navigator.sendBeacon(CHAT_EXPORT_URL, blob);
+        navigator.sendBeacon(apiUrl(EXPORT_TELEGRAM_ENDPOINT), blob);
         exportedRef.current = true;
       } catch {
         // ignore sendBeacon failures
@@ -182,7 +209,7 @@ export function ChatBox({ lang }: ChatBoxProps) {
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [sessionId, tgInitData, hasUserMessages]);
+  }, [sessionId, tgInitData, hasUserMessages, msgs, lang, persona, config.telegramExport]);
 
   const send = async () => {
     const trimmed = text.trim();
@@ -197,32 +224,34 @@ export function ChatBox({ lang }: ChatBoxProps) {
     setText("");
     setSending(true);
 
-    const providerReady = config.smart_chat && config.rag_mode === "llm";
-    const payload = {
-      text: trimmed,
+    const historyForRequest = [...msgs.filter((msg) => !msg.isError), userMsg];
+    const requestMessages: ChatMessageDto[] = historyForRequest.map((msg) => ({
+      role: msg.role,
+      content: msg.text,
+    }));
+
+    const payload: ChatAskPayload = {
+      messages: requestMessages,
       lang,
-      llm: smartEnabled && providerReady,
-      session_id: sessionId,
-      tg_init_data: tgInitData ?? undefined,
-    } as const;
+      top_k: 5,
+      use_llm: smartEnabled && config.llmAvailable,
+    };
 
     try {
       const reply = await postChat(payload);
-      if (reply.session_id && reply.session_id !== sessionId && typeof window !== "undefined") {
-        try {
-          window.sessionStorage.setItem("chat_session_id", reply.session_id);
-        } catch {
-          // ignore storage errors
-        }
-      }
       if (reply.persona) {
         setPersona(reply.persona);
       }
       const assistantMsg: Msg = {
         id: `${messageId}-assistant`,
         role: "assistant",
-        text: reply.reply || (lang === "en" ? "No answer yet." : "Ответ пока недоступен."),
-        mode: reply.mode,
+        text: reply.answer?.trim().length
+          ? reply.answer
+          : lang === "en"
+            ? "No answer yet."
+            : "Ответ пока недоступен.",
+        usedLLM: reply.used_llm,
+        sources: reply.sources,
       };
       setMsgs((previous) => [...previous, assistantMsg]);
     } catch (err) {
@@ -230,15 +259,29 @@ export function ChatBox({ lang }: ChatBoxProps) {
         ? "Sorry, something went wrong. Try again later."
         : "Извините, отправка не удалась. Попробуйте ещё раз.";
       let message = fallback;
-      if (err instanceof ChatRequestError && import.meta.env.DEV) {
-        const statusPart = err.status ? `status ${err.status}` : "network error";
-        const urlPart = err.url ? `url ${err.url}` : "";
-        const bodyPart = err.responseSnippet ? `body ${err.responseSnippet}` : "";
-        const detail = [statusPart, urlPart, bodyPart].filter(Boolean).join(" | ");
-        message = `${fallback} — dev: ${detail}`.trim();
+      let detail: string | undefined;
+      let status: number | undefined;
+      if (err instanceof ChatRequestError) {
+        status = err.status || undefined;
+        if (err.responseSnippet) {
+          detail = err.responseSnippet;
+        }
+        if (import.meta.env.DEV) {
+          const parts = [
+            status ? `status ${status}` : "network error",
+            err.url ? `url ${err.url}` : "",
+            detail ? `body ${detail}` : "",
+          ].filter(Boolean);
+          message = `${fallback} — dev: ${parts.join(" | ")}`.trim();
+        } else if (status && status >= 400 && status < 600 && detail) {
+          message = `${fallback} (${status})`;
+        }
       }
-      setError(message);
-      setMsgs((previous) => [...previous, { id: `${messageId}-error`, role: "assistant", text: fallback }]);
+      setError({ message, detail, status });
+      setMsgs((previous) => [
+        ...previous,
+        { id: `${messageId}-error`, role: "assistant", text: fallback, isError: true },
+      ]);
     } finally {
       setSending(false);
     }
@@ -246,10 +289,42 @@ export function ChatBox({ lang }: ChatBoxProps) {
 
   const finishAndSend = async () => {
     if (exporting || exportedRef.current) return;
+    if (!config.telegramExport) {
+      setExportMessage(
+        lang === "en"
+          ? "Telegram export is disabled."
+          : "Отправка в Telegram отключена."
+      );
+      return;
+    }
     setExportMessage(null);
     setExporting(true);
     try {
-      await postChatExport({ session_id: sessionId, tg_init_data: tgInitData ?? undefined });
+      const conversation = msgs
+        .filter((msg) => (msg.role === "assistant" || msg.role === "user") && !msg.isError)
+        .map((msg): ChatMessageDto => ({
+          role: msg.role,
+          content: msg.text,
+        }));
+      if (conversation.length === 0) {
+        exportedRef.current = false;
+        setExportMessage(
+          lang === "en"
+            ? "There is nothing to send yet."
+            : "Отправлять пока нечего."
+        );
+        return;
+      }
+      const exportPayload: ChatExportPayload = {
+        messages: conversation,
+        meta: {
+          session_id: sessionId,
+          lang,
+          persona,
+          tg_init_data: tgInitData ?? undefined,
+        },
+      };
+      await postChatExport(exportPayload);
       exportedRef.current = true;
       setExportMessage(lang === "en" ? "Sent to Telegram." : "Отправила переписку в Telegram.");
     } catch (err) {
@@ -266,8 +341,7 @@ export function ChatBox({ lang }: ChatBoxProps) {
     }
   };
 
-  const smartAvailable = config.smart_chat && config.rag_mode === "llm";
-  const smartToggleDisabled = !smartAvailable;
+  const smartToggleDisabled = !config.llmAvailable;
 
   return (
     <div className="grid gap-3">
@@ -305,21 +379,34 @@ export function ChatBox({ lang }: ChatBoxProps) {
               <span
                 className={[
                   "inline-block max-w-full whitespace-pre-line rounded px-3 py-2 text-left",
-                  m.role === "user" ? "bg-black text-white" : "bg-gray-100 text-gray-900",
+                  m.role === "user"
+                    ? "bg-black text-white"
+                    : m.isError
+                      ? "border border-red-200 bg-red-50 text-red-700"
+                      : "bg-gray-100 text-gray-900",
                 ].join(" ")}
               >
                 {m.text}
               </span>
-              {m.role === "assistant" && m.mode && (
-                <span className="text-xs uppercase tracking-wide text-gray-400">
-                  {m.mode === "llm"
-                    ? lang === "en"
-                      ? "Mode: LLM"
-                      : "Режим: LLM"
-                    : lang === "en"
-                      ? "Mode: Quick"
-                      : "Режим: Быстрый"}
-                </span>
+              {m.role === "assistant" && (
+                <div className="flex flex-col gap-1">
+                  {m.usedLLM !== undefined && (
+                    <span className="text-xs uppercase tracking-wide text-gray-400">
+                      {m.usedLLM
+                        ? lang === "en"
+                          ? "Mode: LLM"
+                          : "Режим: LLM"
+                        : lang === "en"
+                          ? "Mode: Skills"
+                          : "Режим: Навыки"}
+                    </span>
+                  )}
+                  {m.sources && m.sources.length > 0 && (
+                    <span className="text-xs text-gray-500">
+                      {lang === "en" ? "Sources:" : "Источники:"} {m.sources.join(", ")}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -353,7 +440,7 @@ export function ChatBox({ lang }: ChatBoxProps) {
           <button
             className="rounded border border-black px-3 py-2 text-sm font-medium disabled:opacity-60"
             onClick={finishAndSend}
-            disabled={exporting || !hasUserMessages}
+            disabled={exporting || !hasUserMessages || !config.telegramExport}
           >
             {exporting
               ? lang === "en"
@@ -364,14 +451,29 @@ export function ChatBox({ lang }: ChatBoxProps) {
                 : "Завершить и отправить в Telegram"}
           </button>
           <span className="text-xs text-gray-500">
-            {lang === "en"
-              ? "I’ll send the whole chat to Dima in Telegram."
-              : "Отправлю всю переписку Диме в Telegram."}
+            {config.telegramExport
+              ? lang === "en"
+                ? "I’ll send the whole chat to Dima in Telegram."
+                : "Отправлю всю переписку Диме в Telegram."
+              : lang === "en"
+                ? "Telegram export is unavailable right now."
+                : "Отправка в Telegram сейчас недоступна."}
           </span>
         </div>
       )}
 
-      {error && <div className="text-xs text-red-500">{error}</div>}
+      {error && (
+        <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="font-medium">
+            {lang === "en" ? "The assistant could not reply" : "Ассистент не смог ответить"}
+            {error.status ? ` (${error.status})` : ""}
+          </div>
+          <div>{error.message}</div>
+          {error.detail && import.meta.env.DEV && (
+            <div className="mt-1 whitespace-pre-wrap text-xs text-red-600 opacity-80">{error.detail}</div>
+          )}
+        </div>
+      )}
       {exportMessage && <div className="text-xs text-gray-600">{exportMessage}</div>}
     </div>
   );

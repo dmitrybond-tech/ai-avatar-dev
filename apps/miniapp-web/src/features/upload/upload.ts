@@ -1,4 +1,4 @@
-import { apiUrl } from '../../lib/apiBase'
+import { apiUrl } from '../../lib/api'
 
 export type UploadResponse = {
   ok: boolean

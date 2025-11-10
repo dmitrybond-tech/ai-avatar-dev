@@ -1,5 +1,5 @@
 fastapi==0.115.2
-uvicorn==0.31.1
+uvicorn[standard]==0.31.1
 pydantic==2.9.2
 pydantic-settings==2.6.1
 PyYAML==6.0.2
@@ -14,3 +14,6 @@ python-multipart==0.0.9
 email-validator==2.2.0
 sentence-transformers==3.0.1
 faiss-cpu==1.8.0
+python-dotenv==1.0.1
+rapidfuzz==3.6.1
+pandas==2.2.2

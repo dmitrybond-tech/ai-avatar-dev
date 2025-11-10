@@ -22,9 +22,9 @@ test -n "$asset" || { echo "No asset found on index page"; exit 1; }
 code=$(curl -s -I -o /dev/null -w "%{http_code}" "http://127.0.0.1:${WEB_HOST_PORT}${asset}")
 test "$code" = "200" || { echo "Asset ${asset} not 200, got $code"; exit 1; }
 
-echo "[3/3] API healthz on http://127.0.0.1:${API_HOST_PORT}/healthz"
-code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${API_HOST_PORT}/healthz")
-test "$code" = "200" || { echo "API /healthz expected 200, got $code"; exit 1; }
+echo "[3/3] API healthz on http://127.0.0.1:${API_HOST_PORT}/api/healthz"
+code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${API_HOST_PORT}/api/healthz")
+test "$code" = "200" || { echo "API /api/healthz expected 200, got $code"; exit 1; }
 
 echo "Smoke OK"
 

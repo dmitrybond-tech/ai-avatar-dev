@@ -23,25 +23,45 @@ export type TaskItem = {
 
 export type TasksStatusResponse = { items: TaskItem[] };
 
-export type ChatMode = "stub" | "llm";
-export type ChatOut = { reply: string; mode: ChatMode; session_id: string; persona: string };
+export type ChatMessageRole = "user" | "assistant" | "system";
+
+export type ChatMessageDto = {
+  role: ChatMessageRole;
+  content: string;
+};
+
 export type ChatConfig = {
   persona: string;
-  smart_chat: boolean;
-  rag_mode: "extractive" | "llm";
-  provider: string;
-  model: string;
+  llmAvailable: boolean;
+  notion: boolean;
+  csvFallback: boolean;
+  telegramExport: boolean;
+  model?: string;
 };
+
 export type ChatAskPayload = {
-  text: string;
-  lang?: "ru" | "en";
-  llm?: boolean;
-  session_id?: string;
-  tg_init_data?: string | null;
+  messages: ChatMessageDto[];
+  lang: "ru" | "en";
+  top_k?: number;
+  use_llm?: boolean;
 };
+
+export type ChatAskResponse = {
+  answer: string;
+  sources: string[];
+  used_llm: boolean;
+  persona?: string;
+};
+
 export type ChatExportPayload = {
-  session_id: string;
-  tg_init_data?: string | null;
+  messages: ChatMessageDto[];
+  meta?: {
+    title?: string | null;
+    session_id?: string;
+    lang?: "ru" | "en";
+    tg_init_data?: string | null;
+    persona?: string;
+  };
 };
 
 export type CalLinkResponse = { url: string };
