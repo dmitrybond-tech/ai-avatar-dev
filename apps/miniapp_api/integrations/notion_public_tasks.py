@@ -1,14 +1,10 @@
-import os
 from datetime import datetime
 from typing import List, Optional
 
 from notion_client import Client
 from pydantic import BaseModel, Field
 
-
-def _env(name: str, default: Optional[str] = None) -> Optional[str]:
-    value = os.getenv(name, default)
-    return value if value not in (None, "") else default
+from apps.miniapp_api.core import env as env_utils
 
 
 class PublicTaskOut(BaseModel):
@@ -92,15 +88,15 @@ def _iso(dt: str | datetime) -> str:
 
 
 def _init_client() -> Client:
-    api_key = _env("NOTION_API_KEY")
+    api_key = env_utils.notion_token()
     if not api_key:
         raise RuntimeError("NOTION_API_KEY is not set")
-    timeout_val = int(_env("NOTION_TIMEOUT", "10") or "10")
+    timeout_val = env_utils.notion_timeout()
     return Client(auth=api_key, timeout=timeout_val)
 
 
 def query_public_tasks(limit: int = 100) -> List[PublicTaskOut]:
-    db_id = _env("NOTION_PUBLIC_TASKS_DB_ID")
+    db_id = env_utils.tasks_db()
     if not db_id:
         raise RuntimeError("NOTION_PUBLIC_TASKS_DB_ID is not set")
 

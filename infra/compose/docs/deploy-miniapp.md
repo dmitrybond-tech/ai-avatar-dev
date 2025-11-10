@@ -33,6 +33,14 @@ docker compose --env-file .env.miniapp -f miniapp.compose.yaml -f miniapp.runtim
 ../scripts/smoke-miniapp.sh
 ```
 
+5) Optional: probe services from inside the containers (use the same compose flags as above):
+```bash
+docker compose --env-file .env.miniapp -f miniapp.compose.yaml -f miniapp.runtime.yml exec -T web \
+  wget -qO- http://api:8000/api/healthz
+docker compose --env-file .env.miniapp -f miniapp.compose.yaml -f miniapp.runtime.yml exec -T api \
+  curl -sSf http://127.0.0.1:8000/api/healthz
+```
+
 Notes:
 - Web publishes exactly `${WEB_HOST}:${WEB_HOST_PORT}:${WEB_CONTAINER_PORT}` (e.g. 127.0.0.1:15173:8080)
 - API is internal-only (no host port); access it via the web proxy on `/api/*`

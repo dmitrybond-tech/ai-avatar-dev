@@ -5,9 +5,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
+from apps.miniapp_api.core import env as env_utils
 from apps.miniapp_api.models.chat import init_db
-from apps.miniapp_api.routers import skills as skills_router
 from apps.miniapp_api.routers import chat as chat_router_module
+from apps.miniapp_api.routers import skills as skills_router
 
 logger = logging.getLogger("miniapp_api")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -93,6 +94,20 @@ async def log_routes() -> None:
 
 
 @app.on_event("startup")
+async def log_notion_env_snapshot() -> None:
+    try:
+        snapshot = env_utils.notion_env_snapshot()
+        logger.info(
+            "notion_env token=%s skills_db=%s tasks_db=%s",
+            snapshot["token"],
+            snapshot["skills_db"],
+            snapshot["tasks_db"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Failed to log notion env snapshot: %s", exc.__class__.__name__)
+
+
+@app.on_event("startup")
 async def validate_skills_config() -> None:
     try:
         from apps.miniapp_api.core.settings import SettingsError, get_settings
@@ -150,10 +165,13 @@ async def export_alias_root(payload: chat_router_module.ExportRequest) -> chat_r
 
 # Public tasks aliases (/api/public and /public) returning same payload as /api/tasks/public
 try:
-    from fastapi import Query, HTTPException
+    from fastapi import HTTPException, Query
     from typing import List, Optional
-    import os as _os
-    from apps.miniapp_api.integrations.notion_public import _client as _notion_client, query_public_tasks as _query_public_tasks
+
+    from apps.miniapp_api.integrations.notion_public import (
+        _client as _notion_client,
+        query_public_tasks as _query_public_tasks,
+    )
 
     def _parse_statuses(statuses: Optional[str]) -> Optional[List[str]]:
         if statuses and statuses.strip():
@@ -162,7 +180,7 @@ try:
         return None
 
     def _resolve_dbid() -> str:
-        dbid = (_os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "") or _os.getenv("NOTION_DB", "")).strip()
+        dbid = env_utils.tasks_db()
         if not dbid:
             raise HTTPException(status_code=502, detail={"error": "notion_unreachable"})
         return dbid

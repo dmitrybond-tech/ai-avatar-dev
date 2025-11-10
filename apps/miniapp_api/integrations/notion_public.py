@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import List, Optional
 
 from notion_client import Client
 
+from apps.miniapp_api.core import env as env_utils
 
-NOTION_TIMEOUT = int(os.getenv("NOTION_TIMEOUT", "10"))
+
+NOTION_TIMEOUT = env_utils.notion_timeout()
 
 
 def _client() -> Client:
-    api_key = (os.getenv("NOTION_API_KEY", "") or os.getenv("NOTION_SECRET", "")).strip()
+    api_key = env_utils.notion_token() or ""
     if not api_key:
         raise ValueError("NOTION_API_KEY is not set")
     return Client(auth=api_key, timeout_ms=NOTION_TIMEOUT * 1000)

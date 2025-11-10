@@ -12,6 +12,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import EmailStr
 
+from apps.miniapp_api.core import env as env_utils
 from apps.miniapp_api.services.notion import create_brief_page
 from apps.miniapp_api.services.telegram import build_caption, send_brief
 from apps.miniapp_api.utils.idempotency import reserve_fp
@@ -30,8 +31,6 @@ MAX_MB = int(os.getenv("MAX_UPLOAD_MB", "64"))
 MAX_BYTES = MAX_MB * 1024 * 1024
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ADMIN_CHAT_ID = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
-NOTION_TOKEN = os.getenv("NOTION_API_KEY", "")
-NOTION_DB_ID = os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "")
 
 pathlib.Path(UPLOAD_BASE_DIR).mkdir(parents=True, exist_ok=True)
 
@@ -131,11 +130,13 @@ async def _upload_brief_handler(
             logger.warning("Telegram send failed for request %s: %s", reserved_request_id, exc.__class__.__name__)
 
     notion_page_id = None
-    if NOTION_TOKEN and NOTION_DB_ID:
+    notion_token = env_utils.notion_token() or ""
+    notion_db_id = env_utils.tasks_db() or ""
+    if notion_token and notion_db_id:
         try:
             notion_page_id = await create_brief_page(
-                notion_token=NOTION_TOKEN,
-                db_id=NOTION_DB_ID,
+                notion_token=notion_token,
+                db_id=notion_db_id,
                 data={
                     "request_id": reserved_request_id,
                     "name": name,

@@ -5,9 +5,11 @@ from typing import List, Optional, Tuple
 
 from notion_client import Client, APIResponseError
 
+from ..core import env as env_utils
+
 
 # Environment variables with legacy fallbacks
-NOTION_TIMEOUT = int(os.getenv("NOTION_TIMEOUT", "10"))
+NOTION_TIMEOUT = env_utils.notion_timeout()
 
 
 def _client() -> Client:
@@ -15,7 +17,7 @@ def _client() -> Client:
     
     Supports legacy env vars: NOTION_SECRET → NOTION_API_KEY
     """
-    api_key = os.getenv("NOTION_API_KEY", "").strip() or os.getenv("NOTION_SECRET", "").strip()
+    api_key = env_utils.notion_token() or ""
     if not api_key:
         raise ValueError("NOTION_API_KEY (or legacy NOTION_SECRET) is not set")
     return Client(auth=api_key, timeout_ms=NOTION_TIMEOUT * 1000)

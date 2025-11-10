@@ -10,6 +10,7 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from .core import env as env_utils
 from .routers.chat_v2 import router as chat_router
 from .routers.public_tasks import router as public_tasks_router
 from .routers.skills import alias_router as skills_alias_router, router as skills_router
@@ -65,6 +66,16 @@ async def on_startup() -> None:
         skills_repo.refresh()
     except Exception as exc:  # pragma: no cover - defensive load
         logger.warning("Failed to preload skills: %s", exc)
+    try:
+        snapshot = env_utils.snapshot()
+        logger.info(
+            "notion_env token=%s skills_db=%s tasks_db=%s",
+            snapshot["token"],
+            snapshot["skills_db"],
+            snapshot["tasks_db"],
+        )
+    except Exception as exc:  # pragma: no cover - defensive log
+        logger.debug("Failed to log notion env snapshot: %s", exc)
 
 
 app.include_router(public_tasks_router, prefix="/api")

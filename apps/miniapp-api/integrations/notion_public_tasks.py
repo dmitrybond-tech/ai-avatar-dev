@@ -6,13 +6,7 @@ from typing import List, Optional, Tuple
 from notion_client import Client, APIResponseError
 from pydantic import BaseModel, Field
 
-import os
-
-
-# Environment
-NOTION_API_KEY = os.getenv("NOTION_API_KEY", "").strip()
-NOTION_PUBLIC_TASKS_DB_ID = os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "").strip()
-NOTION_TIMEOUT = int(os.getenv("NOTION_TIMEOUT", "10"))
+from ..core import env as env_utils
 
 
 # Notion properties (must match DB)
@@ -29,10 +23,19 @@ PROP_SOURCE = "Source"
 PROP_DESCRIPTION = "Description"
 
 
+def _tasks_db_id() -> str:
+    return env_utils.tasks_db() or ""
+
+
+NOTION_API_KEY = env_utils.notion_token() or ""
+NOTION_PUBLIC_TASKS_DB_ID = _tasks_db_id()
+
+
 def _client() -> Client:
-    if not NOTION_API_KEY:
+    token = env_utils.notion_token()
+    if not token:
         raise ValueError("NOTION_API_KEY is not set")
-    return Client(auth=NOTION_API_KEY, timeout_ms=NOTION_TIMEOUT * 1000)
+    return Client(auth=token, timeout_ms=env_utils.notion_timeout() * 1000)
 
 
 class PublicTaskOut(BaseModel):

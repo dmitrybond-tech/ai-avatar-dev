@@ -1,9 +1,9 @@
 from typing import List, Optional
 
 import logging
-import os
 from fastapi import APIRouter, HTTPException, Query
 
+from apps.miniapp_api.core import env as env_utils
 from apps.miniapp_api.integrations.notion_public import _client, resolve_schema, query_public_tasks
 
 
@@ -16,7 +16,7 @@ def list_public_tasks(
     limit: int = Query(default=20, ge=1, le=50, description="Max number of tasks (1..50)"),
 ) -> List[dict]:
     try:
-        dbid = (os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "") or os.getenv("NOTION_DB", "")).strip()
+        dbid = env_utils.tasks_db()
         if not dbid:
             logging.getLogger(__name__).warning("Notion DB id is not configured")
             raise HTTPException(status_code=502, detail={"error": "notion_unreachable"})
@@ -40,7 +40,7 @@ def list_public_tasks(
 @router.get("/debug")
 def debug_tasks() -> dict:
     try:
-        dbid = (os.getenv("NOTION_PUBLIC_TASKS_DB_ID", "") or os.getenv("NOTION_DB", "")).strip()
+        dbid = env_utils.tasks_db()
         if not dbid:
             return {"titleProp": None, "publicProp": None, "statusProp": None, "statusValues": []}
         c = _client()

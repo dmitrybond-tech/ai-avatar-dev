@@ -5,15 +5,15 @@ import os
 from functools import lru_cache
 from typing import Dict
 
-
-_log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 _warned: set[str] = set()
 
 
-def _maybe_warn_legacy(legacy_key: str, new_key: str) -> None:
-    if legacy_key not in _warned:
-        _warned.add(legacy_key)
-        _log.warning("env:%s deprecated; migrate to %s", legacy_key, new_key)
+def _warn_once(legacy_key: str, new_key: str) -> None:
+    if legacy_key in _warned:
+        return
+    _warned.add(legacy_key)
+    logger.warning("env:%s is deprecated; migrate to %s", legacy_key, new_key)
 
 
 def _clean(value: str | None) -> str | None:
@@ -29,7 +29,7 @@ def notion_token() -> str | None:
         return primary
     legacy = _clean(os.getenv("NOTION_SECRET"))
     if legacy:
-        _maybe_warn_legacy("NOTION_SECRET", "NOTION_API_KEY")
+        _warn_once("NOTION_SECRET", "NOTION_API_KEY")
     return legacy
 
 
@@ -39,7 +39,7 @@ def skills_db() -> str | None:
         return primary
     legacy = _clean(os.getenv("NOTION_DB"))
     if legacy:
-        _maybe_warn_legacy("NOTION_DB", "NOTION_DB_SKILLS")
+        _warn_once("NOTION_DB", "NOTION_DB_SKILLS")
     return legacy
 
 
@@ -49,33 +49,35 @@ def tasks_db() -> str | None:
         return primary
     legacy = _clean(os.getenv("NOTION_DB"))
     if legacy:
-        _maybe_warn_legacy("NOTION_DB", "NOTION_PUBLIC_TASKS_DB_ID")
+        _warn_once("NOTION_DB", "NOTION_PUBLIC_TASKS_DB_ID")
     return legacy
 
 
 def notion_timeout() -> int:
-    v = _clean(os.getenv("NOTION_TIMEOUT"))
-    try:
-        return int(v) if v else 10
-    except Exception:
-        _log.warning("env:NOTION_TIMEOUT invalid=%s default=10", v)
+    raw = _clean(os.getenv("NOTION_TIMEOUT"))
+    if not raw:
         return 10
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logger.warning("env:NOTION_TIMEOUT invalid=%s default=10", raw)
+        return 10
+    return max(1, min(value, 300))
 
 
-def _format_secret(value: str | None) -> str:
+def _fmt(value: str | None) -> str:
     return f"SET(len:{len(value)})" if value else "EMPTY"
 
 
 @lru_cache(maxsize=1)
-def notion_env_snapshot() -> Dict[str, str]:
-    """Return cached snapshot for logging diagnostics."""
-
+def snapshot() -> Dict[str, str]:
     token = notion_token()
     skills = skills_db()
     tasks = tasks_db()
     return {
-        "token": _format_secret(token),
-        "skills_db": _format_secret(skills),
-        "tasks_db": _format_secret(tasks),
+        "token": _fmt(token),
+        "skills_db": _fmt(skills),
+        "tasks_db": _fmt(tasks),
     }
+
 

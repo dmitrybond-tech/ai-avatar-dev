@@ -15,6 +15,8 @@ try:
 except Exception:  # pragma: no cover - notion client is optional
     Client = None  # type: ignore
 
+from ..core import env as env_utils
+
 logger = logging.getLogger(__name__)
 
 
@@ -88,13 +90,9 @@ class SkillsRepository:
         self._lock = Lock()
         self._snapshot: Optional[SkillsSnapshot] = None
 
-        self._notion_api_key = os.getenv("NOTION_API_KEY") or os.getenv("NOTION_SECRET")
-        self._notion_db = os.getenv("NOTION_DB_SKILLS") or os.getenv("NOTION_DB")
-        timeout_raw = os.getenv("NOTION_TIMEOUT") or ""
-        try:
-            self._notion_timeout = float(timeout_raw) if timeout_raw else 10.0
-        except ValueError:
-            self._notion_timeout = 10.0
+        self._notion_api_key = env_utils.notion_token()
+        self._notion_db = env_utils.skills_db()
+        self._notion_timeout = float(env_utils.notion_timeout())
 
         self._csv_path = Path(os.getenv("SKILLS_CSV_PATH") or "/app/data/skills.csv")
         self._mode = (os.getenv("SKILLS_SOURCE") or "auto").strip().lower()
