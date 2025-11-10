@@ -39,9 +39,10 @@ from .routers.public_tasks import router as public_tasks_router
 from .routers.skills import router as skills_router
 from .routers.briefs import router as briefs_router
 try:
-    from .app.routers.chat import router as chat_router  # type: ignore[attr-defined]
+    from .app.routers.chat import alias_router as chat_alias_router, router as chat_router  # type: ignore[attr-defined]
 except Exception:  # pragma: no cover - defensive import for packaging quirks
     chat_router = None
+    chat_alias_router = None
 app.include_router(public_tasks_router, prefix="/api")
 app.include_router(skills_router)
 app.include_router(skills_router, prefix="/api")
@@ -49,6 +50,8 @@ app.include_router(briefs_router)
 app.include_router(briefs_router, prefix="/api")
 if chat_router is not None:
     app.include_router(chat_router)
+if chat_alias_router is not None:
+    app.include_router(chat_alias_router)
 
 
 class TaskItem(BaseModel):
@@ -68,6 +71,11 @@ class CalLinkResponse(BaseModel):
 
 @app.get("/healthz")
 async def healthz() -> Dict[str, bool]:
+    return {"ok": True}
+
+
+@app.get("/api/healthz")
+async def api_healthz() -> Dict[str, bool]:
     return {"ok": True}
 
 

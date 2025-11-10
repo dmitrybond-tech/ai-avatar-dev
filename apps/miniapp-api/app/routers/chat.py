@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from ..rag import answer, embed, index_faiss
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+alias_router = APIRouter()
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -201,6 +202,16 @@ async def ask(request: Request, payload: ChatAskIn) -> ChatAskOut:
         sources=[ChatSource(**source) for source in sources],
         mode=mode,
     )
+
+
+@alias_router.post("/api/ask", response_model=ChatAskOut, include_in_schema=False)
+async def ask_api_alias(request: Request, payload: ChatAskIn) -> ChatAskOut:
+    return await ask(request, payload)
+
+
+@alias_router.post("/ask", response_model=ChatAskOut, include_in_schema=False)
+async def ask_root_alias(request: Request, payload: ChatAskIn) -> ChatAskOut:
+    return await ask(request, payload)
 
 
 class ChatStubPayload(BaseModel):

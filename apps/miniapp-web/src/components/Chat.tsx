@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getChatConfig, postChat } from "../api/client";
+import { getChatConfig, postChat, ChatRequestError } from "../api/client";
 import type { ChatOut, ChatSource, ChatConfig } from "../types";
 import type { Locale } from "../shared/i18n/resolveLocale";
 
@@ -79,8 +79,19 @@ export function ChatBox({ lang }: ChatBoxProps) {
       };
       setMsgs((m) => [...m, assistantMsg]);
     } catch (err) {
-      const fallback = lang === "en" ? "Sorry, something went wrong. Try again later." : "Извините, не получилось. Попробуйте ещё раз.";
-      setError(err instanceof Error ? err.message : String(err));
+      const fallback =
+        lang === "en"
+          ? "Sorry, something went wrong. Try again later."
+          : "Извините, не получилось. Попробуйте ещё раз.";
+      let message = fallback;
+      if (err instanceof ChatRequestError && import.meta.env.DEV) {
+        const statusPart = err.status ? `status ${err.status}` : "network error";
+        const urlPart = err.url ? `url ${err.url}` : "";
+        const bodyPart = err.responseSnippet ? `body ${err.responseSnippet}` : "";
+        const detail = [statusPart, urlPart, bodyPart].filter(Boolean).join(" | ");
+        message = `${fallback} — dev: ${detail}`.trim();
+      }
+      setError(message);
       setMsgs((m) => [...m, { id: `${userMsg.id}-err`, role: "assistant", text: fallback }]);
     } finally {
       setSending(false);

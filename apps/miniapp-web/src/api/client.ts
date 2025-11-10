@@ -1,4 +1,4 @@
-import { apiUrl } from "../lib/apiBase.ts";
+import { apiUrl, ASK_URL, CHAT_CONFIG_URL } from "../lib/apiBase.ts";
 import type { Locale } from "../shared/i18n/resolveLocale";
 import type {
   TasksStatusResponse,
@@ -78,7 +78,7 @@ export async function getCal(): Promise<CalLinkResponse> {
 }
 
 export async function getChatConfig(signal?: AbortSignal): Promise<ChatConfig> {
-  const r = await fetch(apiUrl("/api/chat/config"), { signal });
+  const r = await fetch(CHAT_CONFIG_URL, { signal });
   if (!r.ok) {
     throw new Error(`Failed to load chat config (status ${r.status})`);
   }
@@ -92,24 +92,41 @@ export async function getChatConfig(signal?: AbortSignal): Promise<ChatConfig> {
   };
 }
 
+export class ChatRequestError extends Error {
+  readonly status: number;
+  readonly url: string;
+  readonly responseSnippet: string;
+
+  constructor(status: number, url: string, responseSnippet: string) {
+    super("Chat request failed");
+    this.name = "ChatRequestError";
+    this.status = status;
+    this.url = url;
+    this.responseSnippet = responseSnippet;
+  }
+}
+
 export async function postChat(payload: ChatAskPayload, signal?: AbortSignal): Promise<ChatOut> {
-  const r = await fetch(apiUrl("/api/chat/ask"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal,
-  });
+  let r: Response;
+  try {
+    r = await fetch(ASK_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+  } catch (networkErr) {
+    throw new ChatRequestError(0, ASK_URL, networkErr instanceof Error ? networkErr.message : String(networkErr));
+  }
   if (!r.ok) {
-    let detail = `status ${r.status}`;
+    let text = "";
     try {
-      const err = await r.json();
-      if (err?.detail) {
-        detail = JSON.stringify(err.detail);
-      }
+      text = await r.text();
     } catch {
-      // Ignore JSON parse errors
+      text = "";
     }
-    throw new Error(`Chat request failed (${detail})`);
+    const snippet = text.length > 200 ? `${text.slice(0, 200)}…` : text;
+    throw new ChatRequestError(r.status, r.url || ASK_URL, snippet.trim());
   }
   const data = await r.json();
   const rawSources = Array.isArray(data?.sources) ? data.sources : [];
