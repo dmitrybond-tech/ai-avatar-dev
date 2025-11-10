@@ -35,7 +35,7 @@ docker compose --env-file .env.miniapp -f miniapp.compose.yaml -f miniapp.runtim
 
 Notes:
 - Web publishes exactly `${WEB_HOST}:${WEB_HOST_PORT}:${WEB_CONTAINER_PORT}` (e.g. 127.0.0.1:15173:8080)
-- API publishes exactly `${API_HOST}:${API_HOST_PORT}:${API_CONTAINER_PORT}` (e.g. 127.0.0.1:18080:8080)
+- API is internal-only (no host port); access it via the web proxy on `/api/*`
 - Bot publishes no ports
 - No dev ports like 5173 are published in production
 

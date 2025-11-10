@@ -7,7 +7,7 @@ Local dev:
 python -m venv .venv
 . .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt
-uvicorn apps.miniapp_api.main:app --reload --host 127.0.0.1 --port 8080
+uvicorn apps.miniapp_api.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Endpoints:

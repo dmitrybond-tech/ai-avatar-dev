@@ -59,10 +59,20 @@ async def healthz() -> dict:
     return {"ok": True}
 
 
+@app.get("/api/healthz", include_in_schema=False)
+async def healthz_api() -> dict:
+    return await healthz()
+
+
 @app.get("/healthz/revision")
 def healthz_revision() -> dict:
     revision = os.getenv("org.opencontainers.image.revision") or os.getenv("APP_REVISION") or "unknown"
     return {"revision": revision}
+
+
+@app.get("/api/healthz/revision", include_in_schema=False)
+def healthz_revision_api() -> dict:
+    return healthz_revision()
 
 
 @app.on_event("startup")
@@ -127,6 +137,16 @@ async def ask_alias(payload: chat_router_module.AskRequest) -> chat_router_modul
 @app.post("/ask", include_in_schema=False)
 async def ask_alias_root(payload: chat_router_module.AskRequest) -> chat_router_module.AskResponse:
     return await chat_router_module.ask(payload)
+
+
+@app.post("/api/export/telegram", include_in_schema=False)
+async def export_alias(payload: chat_router_module.ExportRequest) -> chat_router_module.ExportResponse:
+    return await chat_router_module.export_chat(payload)
+
+
+@app.post("/export/telegram", include_in_schema=False)
+async def export_alias_root(payload: chat_router_module.ExportRequest) -> chat_router_module.ExportResponse:
+    return await chat_router_module.export_chat(payload)
 
 # Public tasks aliases (/api/public and /public) returning same payload as /api/tasks/public
 try:

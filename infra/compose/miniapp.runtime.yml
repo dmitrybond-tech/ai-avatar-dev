@@ -11,13 +11,15 @@ services:
       start_period: 10s
     restart: unless-stopped
     pull_policy: always
+    depends_on:
+      - api
 
   api:
     image: ${IMAGE_API:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-api}:${IMAGE_TAG:-main}
-    ports:
-      - "127.0.0.1:18080:8080"
+    expose:
+      - "8000"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/healthz"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3

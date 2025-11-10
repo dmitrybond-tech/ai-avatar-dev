@@ -5,7 +5,7 @@ services:
     env_file:
       - .env.miniapp
     environment:
-      - PORT=8080
+      - PORT=8000
       - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
       - CAL_HOST=${CAL_HOST:-cal.com}
       - DEFAULT_LANG=${DEFAULT_LANG:-ru}
@@ -20,8 +20,10 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-https://miniapp.dmitrybond.tech}
       - TELEGRAM_SEND_REQUIRED=${TELEGRAM_SEND_REQUIRED:-false}
     restart: unless-stopped
+    expose:
+      - "8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -38,7 +40,7 @@ services:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - BOT_MODE=${BOT_MODE:-polling}
       - TELEGRAM_BOT_NAME=${TELEGRAM_BOT_NAME}
-      - API_BASE_URL=${API_BASE_URL:-http://api:8080}
+      - API_BASE_URL=${API_BASE_URL:-http://api:8000}
       - DEFAULT_LANG=${DEFAULT_LANG:-ru}
       - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
       - CAL_EVENT_INTRO=${CAL_EVENT_INTRO:-intro-30m}
@@ -53,6 +55,8 @@ services:
   web:
     image: ${IMAGE_WEB:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web}:${IMAGE_TAG:-main}
     pull_policy: always
+    depends_on:
+      - api
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/"]

@@ -1,6 +1,9 @@
 ## -------- Build stage: Vite SPA build --------
 FROM node:20.14.0-alpine AS build
 
+ARG VITE_API_BASE_URL=/api
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+
 WORKDIR /app
 
 # Copy app sources (workflow will set context to apps/miniapp-web)
@@ -35,7 +38,7 @@ WORKDIR /usr/share/nginx/html
 COPY --from=build /app/dist/ /usr/share/nginx/html/
 
 # Copy nginx config from repo (persistent)
-COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 8080
 

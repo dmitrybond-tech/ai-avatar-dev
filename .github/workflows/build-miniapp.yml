@@ -114,6 +114,15 @@ jobs:
           created=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           echo "created=${created}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve build args
+        id: build_args
+        run: |
+          if [ "${{ matrix.service }}" = "web" ]; then
+            echo "value=VITE_API_BASE_URL=/api" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push image
         uses: docker/build-push-action@v6.9.0
         with:
@@ -123,6 +132,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: ${{ steps.build_args.outputs.value }}
           labels: |
             org.opencontainers.image.created=${{ steps.meta.outputs.created }}
             org.opencontainers.image.revision=${{ github.sha }}

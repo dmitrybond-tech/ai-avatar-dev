@@ -2,7 +2,7 @@ FROM python:3.12.6-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PORT=8080
+    PORT=8000
 
 WORKDIR /app
 
@@ -24,12 +24,12 @@ RUN mkdir -p apps && \
     touch apps/__init__.py && \
     touch apps/miniapp_api/__init__.py
 
-EXPOSE 8080
+EXPOSE 8000
 
 ENV PYTHONPATH=/app
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl -fsS http://127.0.0.1:8080/healthz || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl -fsS http://127.0.0.1:8000/api/healthz || exit 1
 
-CMD ["uvicorn","apps.miniapp_api.main:app","--host","0.0.0.0","--port","8080"]
+CMD ["uvicorn","apps.miniapp_api.main:app","--host","0.0.0.0","--port","8000"]
 
 

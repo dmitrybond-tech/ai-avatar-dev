@@ -32,8 +32,8 @@ docker run --rm -p 8080:8080 miniapp-web:local
 ```
 
 Notes:
-- API base defaults to same-origin via `src/lib/apiBase.ts`.
-- Optionally set `VITE_API_BASE_URL` at build-time; empty means same-origin.
+- API base defaults to `/api` via `src/lib/api.ts`.
+- Override `VITE_API_BASE_URL` at build-time if you need a different origin.
 - Telegram init runs on first render via `src/lib/tg.ts`.
 - Static assets emitted to `/assets/` with long caching; SPA routes fallback to `index.html`.
 - **How to tweak the modal gap (60px→70px):** change the `60px` inside `--modal-top-offset` in `src/index.css` (keep the `env(safe-area-inset-top, 0px)` part); every dialog uses the shared `modal-offset-*` utilities so the new gap applies automatically.

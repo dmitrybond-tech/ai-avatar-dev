@@ -5,7 +5,7 @@ services:
     env_file:
       - .env.miniapp
     environment:
-      - PORT=8080
+      - PORT=8000
       - DEFAULT_LANG=${DEFAULT_LANG:-ru}
       - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
       - CAL_HOST=${CAL_HOST:-cal.com}
@@ -17,7 +17,7 @@ services:
       - NOTION_DB_SKILLS=${NOTION_DB_SKILLS:?missing}
       - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/healthz"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -40,5 +40,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    depends_on:
+      - api
 
 
