@@ -1,15 +1,24 @@
-import os
 import logging
+import os
+
 from fastapi import FastAPI
-from fastapi.routing import APIRoute
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.openapi.utils import get_openapi
+from fastapi.routing import APIRoute
 
-
-app = FastAPI(title="Miniapp API", version="1.0.0")
+from apps.miniapp_api.models.chat import init_db
+from apps.miniapp_api.routers import skills as skills_router
+from apps.miniapp_api.routers import chat as chat_router_module
 
 logger = logging.getLogger("miniapp_api")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+
+app = FastAPI(
+    title="Miniapp API",
+    version="1.0.0",
+    openapi_url="/api/openapi.json",
+    docs_url=None,
+    redoc_url=None,
+)
 
 app.state.skills_config_error = None
 
@@ -30,6 +39,7 @@ app.add_middleware(
 # Include routers after app is created
 try:
     from apps.miniapp_api.routers.public_tasks import router as public_tasks_router
+
     app.include_router(public_tasks_router, prefix="/api")
 except Exception:
     logging.getLogger(__name__).exception("Failed to include public_tasks router")
@@ -56,6 +66,14 @@ def healthz_revision() -> dict:
 
 
 @app.on_event("startup")
+async def init_chat_storage() -> None:
+    try:
+        init_db()
+    except Exception:  # noqa: BLE001
+        logger.exception("Chat database init failed")
+
+
+@app.on_event("startup")
 async def log_routes() -> None:
     try:
         route_paths = sorted([r.path for r in app.routes if isinstance(r, APIRoute)])
@@ -79,15 +97,10 @@ async def validate_skills_config() -> None:
     except Exception as exc:  # noqa: BLE001
         logger.error("Unexpected error while validating skills settings: %s", exc)
 
-from apps.miniapp_api.routers import skills as skills_router
-
 app.include_router(skills_router, prefix="/api")
 app.include_router(skills_router)
+app.include_router(chat_router_module.router, prefix="/api")
 
-
-@app.get("/api/openapi.json")
-def api_openapi() -> dict:
-    return get_openapi(title=app.title, version="1.0.0", routes=app.routes)
 
 # Optional diagnostics endpoint guarded by DEBUG_DIAG=1
 try:
@@ -104,6 +117,16 @@ try:
             }
 except Exception:
     pass
+
+
+@app.post("/api/ask", include_in_schema=False)
+async def ask_alias(payload: chat_router_module.AskRequest) -> chat_router_module.AskResponse:
+    return await chat_router_module.ask(payload)
+
+
+@app.post("/ask", include_in_schema=False)
+async def ask_alias_root(payload: chat_router_module.AskRequest) -> chat_router_module.AskResponse:
+    return await chat_router_module.ask(payload)
 
 # Public tasks aliases (/api/public and /public) returning same payload as /api/tasks/public
 try:

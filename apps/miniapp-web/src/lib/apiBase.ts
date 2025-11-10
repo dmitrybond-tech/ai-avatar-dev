@@ -18,6 +18,8 @@ export const apiUrl = (path: string): string => {
   return API_BASE ? `${API_BASE}${normalized}` : normalized;
 };
 
-export const ASK_URL = `${API_ROOT}/ask`;
+export const CHAT_ASK_URL = `${API_ROOT}/chat/ask`;
 export const CHAT_CONFIG_URL = `${API_ROOT}/chat/config`;
+export const CHAT_EXPORT_URL = `${API_ROOT}/chat/export`;
+export const ASK_URL = CHAT_ASK_URL;
 

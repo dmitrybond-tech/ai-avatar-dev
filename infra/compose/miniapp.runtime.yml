@@ -34,6 +34,8 @@ services:
       - NOTION_API_KEY=${NOTION_API_KEY:?missing}
       - NOTION_DB_SKILLS=${NOTION_DB_SKILLS:?missing}
       - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
+    volumes:
+      - ./data:/app/data
 
   bot:
     image: ${IMAGE_BOT:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot}:${IMAGE_TAG:-main}

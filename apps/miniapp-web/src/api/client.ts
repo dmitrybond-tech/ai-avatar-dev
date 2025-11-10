@@ -1,4 +1,4 @@
-import { apiUrl, ASK_URL, CHAT_CONFIG_URL } from "../lib/apiBase.ts";
+import { apiUrl, CHAT_ASK_URL, CHAT_CONFIG_URL, CHAT_EXPORT_URL } from "../lib/apiBase.ts";
 import type { Locale } from "../shared/i18n/resolveLocale";
 import type {
   TasksStatusResponse,
@@ -6,6 +6,7 @@ import type {
   ChatOut,
   ChatConfig,
   ChatAskPayload,
+  ChatExportPayload,
   SkillCard,
   SkillDetail,
 } from "../types";
@@ -83,12 +84,12 @@ export async function getChatConfig(signal?: AbortSignal): Promise<ChatConfig> {
     throw new Error(`Failed to load chat config (status ${r.status})`);
   }
   const payload = await r.json();
-  const mode = payload?.rag_mode === "llm" ? "llm" : "extractive";
-  const topkValue = Number(payload?.topk);
   return {
-    smart_default: Boolean(payload?.smart_default),
-    rag_mode: mode,
-    topk: Number.isFinite(topkValue) && topkValue > 0 ? topkValue : 3,
+    persona: typeof payload?.persona === "string" ? payload.persona : "dima",
+    smart_chat: Boolean(payload?.smart_chat),
+    rag_mode: payload?.rag_mode === "llm" ? "llm" : "extractive",
+    provider: typeof payload?.provider === "string" ? payload.provider : "openai",
+    model: typeof payload?.model === "string" ? payload.model : "",
   };
 }
 
@@ -109,14 +110,18 @@ export class ChatRequestError extends Error {
 export async function postChat(payload: ChatAskPayload, signal?: AbortSignal): Promise<ChatOut> {
   let r: Response;
   try {
-    r = await fetch(ASK_URL, {
+    r = await fetch(CHAT_ASK_URL, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
       signal,
     });
   } catch (networkErr) {
-    throw new ChatRequestError(0, ASK_URL, networkErr instanceof Error ? networkErr.message : String(networkErr));
+    throw new ChatRequestError(
+      0,
+      CHAT_ASK_URL,
+      networkErr instanceof Error ? networkErr.message : String(networkErr),
+    );
   }
   if (!r.ok) {
     let text = "";
@@ -126,21 +131,27 @@ export async function postChat(payload: ChatAskPayload, signal?: AbortSignal): P
       text = "";
     }
     const snippet = text.length > 200 ? `${text.slice(0, 200)}…` : text;
-    throw new ChatRequestError(r.status, r.url || ASK_URL, snippet.trim());
+    throw new ChatRequestError(r.status, r.url || CHAT_ASK_URL, snippet.trim());
   }
   const data = await r.json();
-  const rawSources = Array.isArray(data?.sources) ? data.sources : [];
   return {
     reply: typeof data?.reply === "string" && data.reply.trim().length > 0 ? data.reply : "",
-    sources: rawSources
-      .map((item: any) => ({
-        id: typeof item?.id === "string" ? item.id : "",
-        title: typeof item?.title === "string" ? item.title : "",
-        score: typeof item?.score === "number" ? item.score : 0,
-      }))
-      .filter((item) => item.id && item.title),
-    mode: data?.mode === "llm" ? "llm" : "extractive",
+    mode: data?.mode === "llm" ? "llm" : "stub",
+    session_id: typeof data?.session_id === "string" ? data.session_id : "",
+    persona: typeof data?.persona === "string" ? data.persona : "dima",
   };
+}
+
+export async function postChatExport(payload: ChatExportPayload): Promise<void> {
+  const r = await fetch(CHAT_EXPORT_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    const snippet = await r.text().catch(() => "");
+    throw new ChatRequestError(r.status, r.url || CHAT_EXPORT_URL, snippet.slice(0, 200));
+  }
 }
 
 
