@@ -21,6 +21,7 @@ from apps.miniapp_api.utils.idempotency import reserve_fp
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/briefs", tags=["briefs"])
+legacy_router = APIRouter(tags=["briefs-legacy"])
 
 
 ALLOWED = set((os.getenv("ALLOWED_EXT") or "pdf,doc,docx,txt,png,jpg,jpeg,zip").split(","))
@@ -162,6 +163,29 @@ async def _upload_brief_handler(
 
 @router.post("/upload")
 async def upload_brief(
+    file: UploadFile = File(...),
+    locale: str = Form("en"),
+    name: str = Form(...),
+    company: str = Form(...),
+    phone: str = Form(...),
+    email: EmailStr = Form(...),
+    message: Optional[str] = Form(None),
+    request_id: Optional[str] = Form(None),
+):
+    return await _upload_brief_handler(
+        file=file,
+        locale=locale,
+        name=name,
+        company=company,
+        phone=phone,
+        email=email,
+        message=message,
+        request_id=request_id,
+    )
+
+
+@legacy_router.post("/briefs/upload")
+async def upload_brief_legacy(
     file: UploadFile = File(...),
     locale: str = Form("en"),
     name: str = Form(...),

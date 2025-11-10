@@ -49,6 +49,7 @@ try:
     from apps.miniapp_api.routers import briefs as briefs_router
 
     app.include_router(briefs_router.router, prefix="/api")
+    app.include_router(briefs_router.legacy_router)
 except Exception:
     logging.getLogger(__name__).exception("Failed to include briefs router")
 
