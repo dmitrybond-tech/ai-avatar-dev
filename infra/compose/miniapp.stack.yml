@@ -15,12 +15,13 @@ services:
       - SKILLS_CSV_PATH=${SKILLS_CSV_PATH:-/app/data/skills.csv}
       - NOTION_API_KEY=${NOTION_API_KEY:?missing}
       - NOTION_DB_SKILLS=${NOTION_DB_SKILLS:?missing}
+      - NOTION_PUBLIC_TASKS_DB_ID=${NOTION_PUBLIC_TASKS_DB_ID:?missing}
       - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/healthz"]
-      interval: 30s
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 6
       start_period: 10s
 
   bot:
@@ -29,18 +30,20 @@ services:
     env_file:
       - .env.miniapp
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   web:
     image: ${IMAGE_WEB:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web}:${IMAGE_TAG:-main}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/" ]
-      interval: 30s
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/index.html | head -c1"]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 6
       start_period: 10s
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 

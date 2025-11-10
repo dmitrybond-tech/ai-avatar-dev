@@ -48,32 +48,37 @@ except Exception:
 try:
     from apps.miniapp_api.routers import briefs as briefs_router
 
-    app.include_router(briefs_router.router)
-    if hasattr(briefs_router, "alias_router"):
-        app.include_router(briefs_router.alias_router)
+    app.include_router(briefs_router.router, prefix="/api")
 except Exception:
     logging.getLogger(__name__).exception("Failed to include briefs router")
 
 
-@app.get("/healthz")
-async def healthz() -> dict:
-    return {"ok": True}
-
-
 @app.get("/api/healthz", include_in_schema=False)
 async def healthz_api() -> dict:
-    return await healthz()
+    notion_token = bool(env_utils.notion_token())
+    notion_skills = bool(env_utils.skills_db())
+    notion_tasks = bool(env_utils.tasks_db())
+    missing = []
+    if not notion_token:
+        missing.append("NOTION_API_KEY")
+    if not notion_skills:
+        missing.append("NOTION_DB_SKILLS")
+    if not notion_tasks:
+        missing.append("NOTION_PUBLIC_TASKS_DB_ID")
 
-
-@app.get("/healthz/revision")
-def healthz_revision() -> dict:
-    revision = os.getenv("org.opencontainers.image.revision") or os.getenv("APP_REVISION") or "unknown"
-    return {"revision": revision}
+    if missing:
+        return {
+            "ok": True,
+            "status": "degraded",
+            "notion": {"status": "unreachable", "missing": missing},
+        }
+    return {"ok": True, "status": "ok"}
 
 
 @app.get("/api/healthz/revision", include_in_schema=False)
 def healthz_revision_api() -> dict:
-    return healthz_revision()
+    revision = os.getenv("org.opencontainers.image.revision") or os.getenv("APP_REVISION") or "unknown"
+    return {"revision": revision}
 
 
 @app.on_event("startup")
@@ -96,12 +101,14 @@ async def log_routes() -> None:
 @app.on_event("startup")
 async def log_notion_env_snapshot() -> None:
     try:
-        snapshot = env_utils.notion_env_snapshot()
+        token = env_utils.notion_token()
+        skills_db = env_utils.skills_db()
+        tasks_db = env_utils.tasks_db()
         logger.info(
-            "notion_env token=%s skills_db=%s tasks_db=%s",
-            snapshot["token"],
-            snapshot["skills_db"],
-            snapshot["tasks_db"],
+            "NOTION_API_KEY=%s; NOTION_DB_SKILLS=%s; NOTION_PUBLIC_TASKS_DB_ID=%s",
+            f"SET(len:{len(token)})" if token else "EMPTY",
+            "SET" if skills_db else "EMPTY",
+            "SET" if tasks_db else "EMPTY",
         )
     except Exception as exc:  # noqa: BLE001
         logger.debug("Failed to log notion env snapshot: %s", exc.__class__.__name__)
@@ -123,7 +130,6 @@ async def validate_skills_config() -> None:
         logger.error("Unexpected error while validating skills settings: %s", exc)
 
 app.include_router(skills_router, prefix="/api")
-app.include_router(skills_router)
 app.include_router(chat_router_module.router, prefix="/api")
 
 
@@ -149,18 +155,8 @@ async def ask_alias(payload: chat_router_module.AskRequest) -> chat_router_modul
     return await chat_router_module.ask(payload)
 
 
-@app.post("/ask", include_in_schema=False)
-async def ask_alias_root(payload: chat_router_module.AskRequest) -> chat_router_module.AskResponse:
-    return await chat_router_module.ask(payload)
-
-
 @app.post("/api/export/telegram", include_in_schema=False)
 async def export_alias(payload: chat_router_module.ExportRequest) -> chat_router_module.ExportResponse:
-    return await chat_router_module.export_chat(payload)
-
-
-@app.post("/export/telegram", include_in_schema=False)
-async def export_alias_root(payload: chat_router_module.ExportRequest) -> chat_router_module.ExportResponse:
     return await chat_router_module.export_chat(payload)
 
 # Public tasks aliases (/api/public and /public) returning same payload as /api/tasks/public
@@ -187,13 +183,6 @@ try:
 
     @app.get("/api/public")
     def api_public(statuses: Optional[str] = Query(default=None), limit: int = Query(default=20, ge=1, le=50)) -> List[dict]:
-        dbid = _resolve_dbid()
-        sts = _parse_statuses(statuses) or ["In Progress", "Review"]
-        client = _notion_client()
-        return _query_public_tasks(client, dbid, sts, limit)
-
-    @app.get("/public")
-    def public(statuses: Optional[str] = Query(default=None), limit: int = Query(default=20, ge=1, le=50)) -> List[dict]:
         dbid = _resolve_dbid()
         sts = _parse_statuses(statuses) or ["In Progress", "Review"]
         client = _notion_client()

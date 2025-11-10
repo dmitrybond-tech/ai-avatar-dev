@@ -15,6 +15,7 @@ services:
       - SKILLS_CSV_PATH=${SKILLS_CSV_PATH:-/app/data/skills.csv}
       - NOTION_API_KEY=${NOTION_API_KEY:?missing}
       - NOTION_DB_SKILLS=${NOTION_DB_SKILLS:?missing}
+      - NOTION_PUBLIC_TASKS_DB_ID=${NOTION_PUBLIC_TASKS_DB_ID:?missing}
       - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
       - UPLOAD_DIR=${UPLOAD_DIR:-/app/uploads}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://miniapp.dmitrybond.tech}
@@ -23,11 +24,11 @@ services:
     expose:
       - "8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     volumes:
       - ./data/uploads:/app/uploads
 
@@ -49,19 +50,21 @@ services:
       - CAL_URL=${CAL_URL:-https://cal.com/${CAL_USERNAME:-dmitrybond}/${CAL_EVENT_INTRO:-intro-30m}}
       - BRIEF_URL=${BRIEF_URL}
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     restart: unless-stopped
 
   web:
     image: ${IMAGE_WEB:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web}:${IMAGE_TAG:-main}
     pull_policy: always
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/index.html | head -c1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
 
