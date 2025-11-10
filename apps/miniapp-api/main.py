@@ -38,11 +38,17 @@ app.add_middleware(
 from .routers.public_tasks import router as public_tasks_router
 from .routers.skills import router as skills_router
 from .routers.briefs import router as briefs_router
+try:
+    from .app.routers.chat import router as chat_router  # type: ignore[attr-defined]
+except Exception:  # pragma: no cover - defensive import for packaging quirks
+    chat_router = None
 app.include_router(public_tasks_router, prefix="/api")
 app.include_router(skills_router)
 app.include_router(skills_router, prefix="/api")
 app.include_router(briefs_router)
 app.include_router(briefs_router, prefix="/api")
+if chat_router is not None:
+    app.include_router(chat_router)
 
 
 class TaskItem(BaseModel):
@@ -54,14 +60,6 @@ class TaskItem(BaseModel):
 
 class TasksStatusResponse(BaseModel):
     items: List[TaskItem] = Field(default_factory=list)
-
-
-class ChatIn(BaseModel):
-    text: str
-
-
-class ChatOut(BaseModel):
-    reply: str
 
 
 class CalLinkResponse(BaseModel):
@@ -99,11 +97,6 @@ async def tasks_status() -> TasksStatusResponse:
         TaskItem(id="t-2", title="Infra audit", status="todo", updatedAt=now),
         TaskItem(id="t-3", title="MiniApp MVP", status="done", updatedAt=now),
     ])
-
-
-@app.post("/api/chat/stub", response_model=ChatOut)
-async def chat_stub(m: ChatIn) -> ChatOut:
-    return ChatOut(reply="Понял. Могу помочь: 1) записать на встречу, 2) рассказать, что умею (skills), 3) уточнить ваш запрос.")
 
 
 @app.get("/cal/link", response_model=CalLinkResponse)

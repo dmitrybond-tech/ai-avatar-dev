@@ -1,6 +1,14 @@
 import { apiUrl } from "../lib/apiBase.ts";
 import type { Locale } from "../shared/i18n/resolveLocale";
-import type { TasksStatusResponse, CalLinkResponse, ChatOut, SkillCard, SkillDetail } from "../types";
+import type {
+  TasksStatusResponse,
+  CalLinkResponse,
+  ChatOut,
+  ChatConfig,
+  ChatAskPayload,
+  SkillCard,
+  SkillDetail,
+} from "../types";
 
 // New skills endpoints
 function ensureStringArray(value: unknown): string[] {
@@ -69,13 +77,53 @@ export async function getCal(): Promise<CalLinkResponse> {
   return r.json();
 }
 
-export async function postChat(text: string): Promise<ChatOut> {
-  const r = await fetch(apiUrl("/api/chat/stub"), {
+export async function getChatConfig(signal?: AbortSignal): Promise<ChatConfig> {
+  const r = await fetch(apiUrl("/api/chat/config"), { signal });
+  if (!r.ok) {
+    throw new Error(`Failed to load chat config (status ${r.status})`);
+  }
+  const payload = await r.json();
+  const mode = payload?.rag_mode === "llm" ? "llm" : "extractive";
+  const topkValue = Number(payload?.topk);
+  return {
+    smart_default: Boolean(payload?.smart_default),
+    rag_mode: mode,
+    topk: Number.isFinite(topkValue) && topkValue > 0 ? topkValue : 3,
+  };
+}
+
+export async function postChat(payload: ChatAskPayload, signal?: AbortSignal): Promise<ChatOut> {
+  const r = await fetch(apiUrl("/api/chat/ask"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: text }),
+    body: JSON.stringify(payload),
+    signal,
   });
-  return r.json();
+  if (!r.ok) {
+    let detail = `status ${r.status}`;
+    try {
+      const err = await r.json();
+      if (err?.detail) {
+        detail = JSON.stringify(err.detail);
+      }
+    } catch {
+      // Ignore JSON parse errors
+    }
+    throw new Error(`Chat request failed (${detail})`);
+  }
+  const data = await r.json();
+  const rawSources = Array.isArray(data?.sources) ? data.sources : [];
+  return {
+    reply: typeof data?.reply === "string" && data.reply.trim().length > 0 ? data.reply : "",
+    sources: rawSources
+      .map((item: any) => ({
+        id: typeof item?.id === "string" ? item.id : "",
+        title: typeof item?.title === "string" ? item.title : "",
+        score: typeof item?.score === "number" ? item.score : 0,
+      }))
+      .filter((item) => item.id && item.title),
+    mode: data?.mode === "llm" ? "llm" : "extractive",
+  };
 }
 
 

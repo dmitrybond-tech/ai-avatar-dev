@@ -263,7 +263,7 @@ export function App() {
               onSkills={(lang) => goSkills(ensureSupportedLang(lang))}
               onTasks={() => setIsTasksOpen(true)}
             />
-            <ChatBox />
+            <ChatBox lang={currentLang} />
           </>
         )}
         {route.name === 'skills' && (
