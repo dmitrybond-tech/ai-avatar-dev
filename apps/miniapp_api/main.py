@@ -12,10 +12,14 @@ from fastapi.routing import APIRoute
 from apps.miniapp_api.core import env as env_utils
 from apps.miniapp_api.integrations.notion_public import _client as notion_client, query_public_tasks
 from apps.miniapp_api.routers import briefs as briefs_router
-from apps.miniapp_api.routers import skills as skills_router
 from apps.miniapp_api.routers.chat import router as chat_router
 from apps.miniapp_api.routers.public_tasks import router as public_tasks_router
 from apps.miniapp_api.routers.tasks import router as tasks_router
+from apps.miniapp_api.routers.skills import (
+    alias_router as legacy_skills_router,
+    api_router as skills_api_router,
+    router as skills_router,
+)
 from apps.miniapp_api.services.llm_provider import LLMProvider
 from apps.miniapp_api.services.skills_service import SkillsRepository
 from apps.miniapp_api.services.telegram_exporter import TelegramExporter
@@ -157,9 +161,9 @@ def alias_public_legacy(
 app.include_router(chat_router)
 app.include_router(tasks_router)
 app.include_router(public_tasks_router, prefix="/api")
-app.include_router(skills_router.router)
-app.include_router(skills_router.api_router)
-app.include_router(skills_router.alias_router)
+app.include_router(skills_router)
+app.include_router(skills_api_router)
+app.include_router(legacy_skills_router)
 app.include_router(briefs_router.router, prefix="/api")
 app.include_router(briefs_router.legacy_router)
 
