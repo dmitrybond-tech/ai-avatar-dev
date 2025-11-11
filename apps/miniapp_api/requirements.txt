@@ -11,3 +11,5 @@ email-validator==2.2.0
 openai==2.7.1
 groq==0.33.0
 sqlmodel==0.0.22
+redis>=5.0.0
+ulid-py>=1.1.0
