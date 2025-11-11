@@ -3,15 +3,9 @@ x-miniapp-env: &miniapp_env
 
 services:
   api:
-    working_dir: /app
     env_file: *miniapp_env
     environment:
-      # Notion token(s)
-      NOTION_TIMEOUT: ${NOTION_TIMEOUT:-10}
-      NOTION_CACHE_TTL_SKILLS: ${NOTION_CACHE_TTL_SKILLS:-300}
       NOTION_CACHE_TTL_TASKS: ${NOTION_CACHE_TTL_TASKS:-300}
-      SKILLS_SOURCE: ${SKILLS_SOURCE:-auto}
-      SKILLS_CSV_PATH: ${SKILLS_CSV_PATH:-/app/data/skills.csv}
 
       # Brief upload configuration
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
@@ -20,22 +14,6 @@ services:
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-64}
       ALLOWED_EXT: ${ALLOWED_EXT:-pdf,doc,docx,txt,png,jpg,jpeg,zip}
 
-    volumes:
-      - ./data/uploads:/app/uploads
-
-    command:
-      - uvicorn
-      - apps.miniapp_api.main:app
-      - --host=0.0.0.0
-      - --port=8000
-      - --proxy-headers
-      - --forwarded-allow-ips=*
-
   bot:
     env_file: *miniapp_env
-
-  web:
-    volumes:
-      - ../../apps/miniapp-web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-
 

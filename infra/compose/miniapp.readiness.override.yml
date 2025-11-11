@@ -3,11 +3,12 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - wget -q --spider http://127.0.0.1:8000/api/healthz || exit 1
+        - curl -fsS http://127.0.0.1:8000/api/healthz >/dev/null || exit 1
       interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
   web:
     depends_on:
       api:
@@ -17,7 +18,11 @@ services:
         - CMD-SHELL
         - wget -q --spider http://127.0.0.1:8080/ || exit 1
       interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
 
+  bot:
+    depends_on:
+      api:
+        condition: service_healthy

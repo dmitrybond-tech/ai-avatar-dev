@@ -1,46 +1,14 @@
 services:
   api:
-    image: ${IMAGE_API:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-api}:${IMAGE_TAG:-main}
-    restart: unless-stopped
-    env_file:
-      - .env.miniapp
-    environment:
-      - PORT=8000
-      - DEFAULT_LANG=${DEFAULT_LANG:-ru}
-      - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
-      - CAL_HOST=${CAL_HOST:-cal.com}
-      - NOTION_TIMEOUT=${NOTION_TIMEOUT:-10}
-      - NOTION_CACHE_TTL_SKILLS=${NOTION_CACHE_TTL_SKILLS:-300}
-      - SKILLS_SOURCE=${SKILLS_SOURCE:-auto}
-      - SKILLS_CSV_PATH=${SKILLS_CSV_PATH:-/app/data/skills.csv}
-      - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 10s
-
-  bot:
-    image: ${IMAGE_BOT:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot}:${IMAGE_TAG:-main}
-    restart: unless-stopped
-    env_file:
-      - .env.miniapp
-    depends_on:
-      api:
-        condition: service_healthy
+    working_dir: /app
+    command:
+      - uvicorn
+      - apps.miniapp_api.main:app
+      - --host=0.0.0.0
+      - --port=8000
+      - --proxy-headers
+      - --forwarded-allow-ips=*
 
   web:
-    image: ${IMAGE_WEB:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web}:${IMAGE_TAG:-main}
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/index.html | head -c1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 10s
-    depends_on:
-      api:
-        condition: service_healthy
-
-
+    volumes:
+      - ../../apps/miniapp-web/nginx.conf:/etc/nginx/conf.d/default.conf:ro

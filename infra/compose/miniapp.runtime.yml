@@ -1,49 +1,8 @@
 services:
   web:
-    image: ${IMAGE_WEB:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web}:${IMAGE_TAG:-main}
     ports:
       - "127.0.0.1:15173:8080"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/index.html | head -c1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 10s
-    restart: unless-stopped
-    pull_policy: always
-    depends_on:
-      api:
-        condition: service_healthy
 
   api:
-    image: ${IMAGE_API:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-api}:${IMAGE_TAG:-main}
     expose:
       - "8000"
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 10s
-    restart: unless-stopped
-    pull_policy: always
-    env_file:
-      - .env.miniapp
-    environment:
-      - NOTION_TIMEOUT=${NOTION_TIMEOUT:-10}
-      - NOTION_CACHE_TTL_SKILLS=${NOTION_CACHE_TTL_SKILLS:-300}
-      - SKILLS_SOURCE=${SKILLS_SOURCE:-auto}
-      - SKILLS_CSV_PATH=${SKILLS_CSV_PATH:-/app/data/skills.csv}
-      - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
-    volumes:
-      - ./data/uploads:/app/uploads
-
-  bot:
-    image: ${IMAGE_BOT:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot}:${IMAGE_TAG:-main}
-    restart: unless-stopped
-    pull_policy: always
-    env_file:
-      - .env.miniapp
-
-volumes:
-  bot-data: {}

@@ -1,67 +1,54 @@
+x-miniapp-service: &miniapp-service
+  restart: unless-stopped
+  pull_policy: always
+
+x-miniapp-env: &miniapp-env
+  - .env.miniapp
+
 services:
   api:
+    <<: *miniapp-service
     image: ${IMAGE_API:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-api}:${IMAGE_TAG:-main}
-    pull_policy: always
-    env_file:
-      - .env.miniapp
+    env_file: *miniapp-env
     environment:
-      - PORT=8000
-      - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
-      - CAL_HOST=${CAL_HOST:-cal.com}
-      - DEFAULT_LANG=${DEFAULT_LANG:-ru}
-      - NOTION_TIMEOUT=${NOTION_TIMEOUT:-10}
-      - NOTION_CACHE_TTL_SKILLS=${NOTION_CACHE_TTL_SKILLS:-300}
-      - SKILLS_SOURCE=${SKILLS_SOURCE:-auto}
-      - SKILLS_CSV_PATH=${SKILLS_CSV_PATH:-/app/data/skills.csv}
-      - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
-      - UPLOAD_DIR=${UPLOAD_DIR:-/app/uploads}
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://miniapp.dmitrybond.tech}
-      - TELEGRAM_SEND_REQUIRED=${TELEGRAM_SEND_REQUIRED:-false}
-    restart: unless-stopped
+      PORT: 8000
+      CAL_USERNAME: ${CAL_USERNAME:-dmitrybond}
+      CAL_HOST: ${CAL_HOST:-cal.com}
+      DEFAULT_LANG: ${DEFAULT_LANG:-ru}
+      NOTION_TIMEOUT: ${NOTION_TIMEOUT:-10}
+      NOTION_CACHE_TTL_SKILLS: ${NOTION_CACHE_TTL_SKILLS:-300}
+      SKILLS_SOURCE: ${SKILLS_SOURCE:-auto}
+      SKILLS_CSV_PATH: ${SKILLS_CSV_PATH:-/app/data/skills.csv}
+      WEBSITE_ORIGIN: ${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://miniapp.dmitrybond.tech}
+      TELEGRAM_SEND_REQUIRED: ${TELEGRAM_SEND_REQUIRED:-false}
     expose:
       - "8000"
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 20s
     volumes:
       - ./data/uploads:/app/uploads
 
   bot:
+    <<: *miniapp-service
     image: ${IMAGE_BOT:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot}:${IMAGE_TAG:-main}
-    pull_policy: always
-    env_file:
-      - .env.miniapp
+    env_file: *miniapp-env
     environment:
-      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
-      - BOT_MODE=${BOT_MODE:-polling}
-      - TELEGRAM_BOT_NAME=${TELEGRAM_BOT_NAME}
-      - API_BASE_URL=${API_BASE_URL:-http://api:8000}
-      - DEFAULT_LANG=${DEFAULT_LANG:-ru}
-      - CAL_USERNAME=${CAL_USERNAME:-dmitrybond}
-      - CAL_EVENT_INTRO=${CAL_EVENT_INTRO:-intro-30m}
-      - WEBAPP_URL=${WEBAPP_URL:-http://web:8080}
-      - MINIAPP_URL=${MINIAPP_URL:-${WEBAPP_URL}}
-      - CAL_URL=${CAL_URL:-https://cal.com/${CAL_USERNAME:-dmitrybond}/${CAL_EVENT_INTRO:-intro-30m}}
-      - BRIEF_URL=${BRIEF_URL}
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      BOT_MODE: ${BOT_MODE:-polling}
+      TELEGRAM_BOT_NAME: ${TELEGRAM_BOT_NAME}
+      API_BASE_URL: ${API_BASE_URL:-http://api:8000}
+      DEFAULT_LANG: ${DEFAULT_LANG:-ru}
+      CAL_USERNAME: ${CAL_USERNAME:-dmitrybond}
+      CAL_EVENT_INTRO: ${CAL_EVENT_INTRO:-intro-30m}
+      WEBAPP_URL: ${WEBAPP_URL:-http://web:8080}
+      MINIAPP_URL: ${MINIAPP_URL:-${WEBAPP_URL}}
+      CAL_URL: ${CAL_URL:-https://cal.com/${CAL_USERNAME:-dmitrybond}/${CAL_EVENT_INTRO:-intro-30m}}
+      BRIEF_URL: ${BRIEF_URL}
     depends_on:
       api:
-        condition: service_healthy
-    restart: unless-stopped
+        condition: service_started
 
   web:
+    <<: *miniapp-service
     image: ${IMAGE_WEB:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web}:${IMAGE_TAG:-main}
-    pull_policy: always
-    depends_on:
-      api:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/index.html | head -c1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 20s
 
