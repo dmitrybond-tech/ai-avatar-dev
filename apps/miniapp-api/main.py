@@ -3,18 +3,19 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from .core import env as env_utils
 from .routers.chat_v2 import router as chat_router
 from .routers.public_tasks import router as public_tasks_router
-from .routers.skills import alias_router as skills_alias_router, router as skills_router
+from .routers.skills import api_router as skills_api_router, alias_router as skills_alias_router, router as skills_router
 from .routers.briefs import router as briefs_router
+from .routers.tasks import router as tasks_router
 from .services.llm import LLMProvider
 from .services.skills import SkillsRepository
 from .services.telegram import TelegramExporter
@@ -23,7 +24,13 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-app = FastAPI(title="MiniApp API", version="2.0.0")
+app = FastAPI(
+    title="MiniApp API",
+    version="2.0.0",
+    openapi_url="/api/openapi.json",
+    docs_url=None,
+    redoc_url=None,
+)
 
 DEFAULT_ORIGINS = [
     "https://miniapp.dmitrybond.tech",
@@ -62,6 +69,7 @@ async def on_startup() -> None:
     app.state.skills_repo = skills_repo
     app.state.llm_provider = llm_provider
     app.state.telegram_exporter = telegram_exporter
+    app.state.tasks_state = "unknown"
     try:
         skills_repo.refresh()
     except Exception as exc:  # pragma: no cover - defensive load
@@ -78,24 +86,14 @@ async def on_startup() -> None:
         logger.debug("Failed to log notion env snapshot: %s", exc)
 
 
+app.include_router(chat_router)
+app.include_router(tasks_router)
 app.include_router(public_tasks_router, prefix="/api")
 app.include_router(skills_router)
-app.include_router(skills_router, prefix="/api")
+app.include_router(skills_api_router)
 app.include_router(skills_alias_router)
 app.include_router(briefs_router)
 app.include_router(briefs_router, prefix="/api")
-app.include_router(chat_router)
-
-
-class TaskItem(BaseModel):
-    id: str
-    title: str
-    status: Literal["todo", "in_progress", "done"]
-    updatedAt: str
-
-
-class TasksStatusResponse(BaseModel):
-    items: List[TaskItem] = Field(default_factory=list)
 
 
 class CalLinkResponse(BaseModel):
@@ -118,28 +116,19 @@ def health() -> Dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/tasks/status", response_model=TasksStatusResponse)
-async def tasks_status() -> TasksStatusResponse:
-    from datetime import datetime, timezone
-
-    now = datetime.now(timezone.utc).isoformat()
-    return TasksStatusResponse(
-        items=[
-            TaskItem(id="t-1", title="Client onboarding", status="in_progress", updatedAt=now),
-            TaskItem(id="t-2", title="Infra audit", status="todo", updatedAt=now),
-            TaskItem(id="t-3", title="MiniApp MVP", status="done", updatedAt=now),
-        ]
-    )
+@app.get("/openapi.json", include_in_schema=False)
+async def legacy_openapi() -> Dict[str, Any]:
+    return app.openapi()
 
 
-@app.get("/cal/link", response_model=CalLinkResponse)
+@app.get("/api/cal/link", response_model=CalLinkResponse)
 async def cal_link() -> CalLinkResponse:
     host = os.getenv("CAL_HOST", "cal.com")
     username = os.getenv("CAL_USERNAME", "dmitrybond")
     return CalLinkResponse(url=f"https://{host}/{username}/intro-30m")
 
 
-@app.get("/cal/suggest")
+@app.get("/api/cal/suggest")
 async def cal_suggest(event: str = Query(default="intro-30m"), lang: str = Query(default=None)) -> Dict[str, Any]:
     default_lang = os.getenv("DEFAULT_LANG", "ru")
     if lang is None:
@@ -162,7 +151,7 @@ async def cal_suggest(event: str = Query(default="intro-30m"), lang: str = Query
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.getenv("PORT", "8080"))
+    port = int(os.getenv("PORT", "8000"))
     uvicorn.run("apps.miniapp_api.main:app", host="0.0.0.0", port=port, reload=True)
 
 

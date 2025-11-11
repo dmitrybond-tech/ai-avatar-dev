@@ -1,4 +1,4 @@
-import { apiFetch, apiUrl, getApiBaseUrl } from "../lib/api.ts";
+import { apiFetch, getApiBaseUrl } from "../lib/api.ts";
 import type { Locale } from "../shared/i18n/resolveLocale";
 import type {
   TasksStatusResponse,
@@ -27,7 +27,7 @@ function ensureStringArray(value: unknown): string[] {
 
 export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<SkillCard[]> {
   const qs = `?lang=${lang}`;
-  const r = await fetch(apiUrl(`/skills${qs}`), {
+  const r = await apiFetch(`/skills${qs}`, {
     signal,
     headers: {
       "X-Locale": lang,
@@ -53,7 +53,7 @@ export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<Ski
 
 export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortSignal): Promise<SkillDetail> {
   const qs = `?lang=${lang}`;
-  const r = await fetch(apiUrl(`/skills/${encodeURIComponent(slug)}${qs}`), {
+  const r = await apiFetch(`/skills/${encodeURIComponent(slug)}${qs}`, {
     signal,
     headers: {
       "X-Locale": lang,
@@ -75,12 +75,12 @@ export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortS
 }
 
 export async function getTasks(): Promise<TasksStatusResponse> {
-  const r = await fetch(apiUrl("/tasks/status"));
+  const r = await apiFetch("/tasks/status");
   return r.json();
 }
 
 export async function getCal(): Promise<CalLinkResponse> {
-  const r = await fetch(apiUrl("/cal/link"));
+  const r = await apiFetch("/cal/link");
   return r.json();
 }
 

@@ -58,6 +58,8 @@ class SkillRecord:
     short_ru: str
     bullets_en: List[str]
     bullets_ru: List[str]
+    examples_en: List[str]
+    examples_ru: List[str]
     tags: List[str]
     source: str
 
@@ -76,6 +78,10 @@ class SkillRecord:
             return self.bullets_ru or self.bullets_en
         return self.bullets_en or self.bullets_ru
 
+    def examples(self, lang: str) -> List[str]:
+        if lang.startswith("ru"):
+            return self.examples_ru or self.examples_en
+        return self.examples_en or self.examples_ru
 
 @dataclass
 class SkillsSnapshot:
@@ -94,7 +100,8 @@ class SkillsRepository:
         self._notion_db = env_utils.skills_db()
         self._notion_timeout = float(env_utils.notion_timeout())
 
-        self._csv_path = Path(os.getenv("SKILLS_CSV_PATH") or "/app/data/skills.csv")
+        default_csv = Path(__file__).resolve().parent.parent.parent / "data" / "skills.csv"
+        self._csv_path = Path(os.getenv("SKILLS_CSV_PATH") or default_csv)
         self._mode = (os.getenv("SKILLS_SOURCE") or "auto").strip().lower()
 
     def refresh(self) -> SkillsSnapshot:
@@ -185,6 +192,8 @@ class SkillsRepository:
                     short_ru=short_ru or short_en,
                     bullets_en=bullets_en or examples_en,
                     bullets_ru=bullets_ru or examples_ru,
+                    examples_en=examples_en or bullets_en,
+                    examples_ru=examples_ru or bullets_ru,
                     tags=tags,
                     source="notion",
                 )
@@ -230,6 +239,18 @@ class SkillsRepository:
                 or normalized.get("examplesru")
                 or normalized.get("examples_ru")
             )
+            examples_en = _split_lines(
+                normalized.get("examplesen")
+                or normalized.get("examples_en")
+                or normalized.get("caseen")
+                or normalized.get("casesen")
+            )
+            examples_ru = _split_lines(
+                normalized.get("examplesru")
+                or normalized.get("examples_ru")
+                or normalized.get("caseru")
+                or normalized.get("casesru")
+            )
             tags = _split_tags(
                 normalized.get("tags")
                 or normalized.get("tagsen")
@@ -251,6 +272,8 @@ class SkillsRepository:
                     short_ru=short_ru or short_en,
                     bullets_en=bullets_en,
                     bullets_ru=bullets_ru,
+                    examples_en=examples_en or bullets_en,
+                    examples_ru=examples_ru or bullets_ru,
                     tags=tags,
                     source="csv",
                 )
@@ -278,6 +301,8 @@ class SkillsRepository:
                     " ".join(skill.tags),
                     " ".join(skill.bullets_en[:3]),
                     " ".join(skill.bullets_ru[:3]),
+                    " ".join(skill.examples_en[:2]),
+                    " ".join(skill.examples_ru[:2]),
                 ]
             ).lower()
             score = fuzz.token_set_ratio(cleaned_query, corpus)

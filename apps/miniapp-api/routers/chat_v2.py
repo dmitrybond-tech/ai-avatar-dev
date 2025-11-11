@@ -63,11 +63,26 @@ async def api_healthz(
     start = getattr(request.app.state, "start_time", None)
     uptime = time.time() - start if start else 0.0
     snapshot = skills_repo.snapshot()
+    tasks_state = getattr(request.app.state, "tasks_state", "unknown")
+    status = "ok"
+    if not snapshot.notion or tasks_state == "degraded":
+        status = "degraded"
+    skills_count = len(snapshot.skills)
     return {
-        "ok": True,
+        "status": status,
         "uptime_s": round(uptime, 2),
-        "skills_source": snapshot.source or "unknown",
-        "llm": "ok" if llm_provider.available else "missing",
+        "skills": {
+            "count": skills_count,
+            "source": snapshot.source or "unknown",
+            "notion": snapshot.notion,
+            "csvFallback": snapshot.csv_fallback,
+        },
+        "tasks": {"status": tasks_state},
+        "llm": {
+            "available": llm_provider.available,
+            "model": llm_provider.model,
+        },
+        "timestamp": int(time.time()),
     }
 
 

@@ -1,3 +1,5 @@
+import { apiFetch } from "../../lib/api";
+
 export type PublicTask = {
   id: string;
   title: string;
@@ -12,16 +14,14 @@ export type PublicTask = {
   url: string;
 };
 
-const API = import.meta.env.VITE_API_BASE_URL ?? "";
-
 export async function fetchPublicTasks(): Promise<PublicTask[]> {
-  const r = await fetch(`${API}/api/tasks/public`, { credentials: "omit" });
+  const r = await apiFetch("/tasks/public", { credentials: "omit" });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 
 export async function fetchOpenTasks(): Promise<PublicTask[]> {
-  const r = await fetch(`${API}/api/tasks/public?statuses=In%20Progress,Review&limit=20`, { credentials: "omit" });
+  const r = await apiFetch("/tasks/public?statuses=In%20Progress,Review&limit=20", { credentials: "omit" });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }

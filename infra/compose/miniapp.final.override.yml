@@ -7,18 +7,11 @@ services:
     env_file: *miniapp_env
     environment:
       # Notion token(s)
-      NOTION_API_KEY: ${NOTION_API_KEY:?missing}
       NOTION_TIMEOUT: ${NOTION_TIMEOUT:-10}
       NOTION_CACHE_TTL_SKILLS: ${NOTION_CACHE_TTL_SKILLS:-300}
       NOTION_CACHE_TTL_TASKS: ${NOTION_CACHE_TTL_TASKS:-300}
       SKILLS_SOURCE: ${SKILLS_SOURCE:-auto}
       SKILLS_CSV_PATH: ${SKILLS_CSV_PATH:-/app/data/skills.csv}
-
-      # Skills DB
-      NOTION_DB_SKILLS: ${NOTION_DB_SKILLS:?missing}
-
-      # Tasks DB
-      NOTION_PUBLIC_TASKS_DB_ID: ${NOTION_PUBLIC_TASKS_DB_ID:?missing}
 
       # Brief upload configuration
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}

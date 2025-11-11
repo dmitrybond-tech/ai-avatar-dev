@@ -34,9 +34,6 @@ services:
       - NOTION_CACHE_TTL_SKILLS=${NOTION_CACHE_TTL_SKILLS:-300}
       - SKILLS_SOURCE=${SKILLS_SOURCE:-auto}
       - SKILLS_CSV_PATH=${SKILLS_CSV_PATH:-/app/data/skills.csv}
-      - NOTION_API_KEY=${NOTION_API_KEY:?missing}
-      - NOTION_DB_SKILLS=${NOTION_DB_SKILLS:?missing}
-      - NOTION_PUBLIC_TASKS_DB_ID=${NOTION_PUBLIC_TASKS_DB_ID:?missing}
       - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
     volumes:
       - ./data:/app/data
