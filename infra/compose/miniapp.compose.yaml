@@ -51,4 +51,12 @@ services:
   web:
     <<: *miniapp-service
     image: ${IMAGE_WEB:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-web}:${IMAGE_TAG:-main}
+    env_file: *miniapp-env
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+      VITE_DEFAULT_LANG: ${VITE_DEFAULT_LANG:-ru}
+      VITE_SUPPORTED_LANGS: ${VITE_SUPPORTED_LANGS:-ru,en}
+    depends_on:
+      api:
+        condition: service_started
 

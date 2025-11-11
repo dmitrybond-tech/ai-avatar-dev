@@ -34,6 +34,9 @@ FROM nginx:1.27.2-alpine AS runtime
 
 WORKDIR /usr/share/nginx/html
 
+# Required for compose healthchecks
+RUN apk add --no-cache curl
+
 # Copy built SPA assets
 COPY --from=build /app/dist/ /usr/share/nginx/html/
 

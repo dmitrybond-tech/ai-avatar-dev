@@ -101,8 +101,9 @@ jobs:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
         run: |
           short_sha="${GITHUB_SHA::7}"
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
           tags="${IMAGE_NAME}:main"
-          tags+=$'\n'"${IMAGE_NAME}:${short_sha}"
+          tags+=$'\n'"${IMAGE_NAME}:sha-${short_sha}"
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             tags+=$'\n'"${IMAGE_NAME}:${GITHUB_REF_NAME}"
           fi
@@ -133,6 +134,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: false
           build-args: ${{ steps.build_args.outputs.value }}
           labels: |
             org.opencontainers.image.created=${{ steps.meta.outputs.created }}
