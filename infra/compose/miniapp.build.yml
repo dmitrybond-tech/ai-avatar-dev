@@ -2,8 +2,8 @@ services:
   api:
     image: null
     build:
-      context: ../../apps/miniapp-api
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: apps/miniapp-api/Dockerfile
 
   web:
     image: null

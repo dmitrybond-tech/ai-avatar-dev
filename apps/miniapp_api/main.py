@@ -1,193 +1,176 @@
+from __future__ import annotations
+
 import logging
 import os
+import time
+from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
 from apps.miniapp_api.core import env as env_utils
-from apps.miniapp_api.models.chat import init_db
-from apps.miniapp_api.routers import chat as chat_router_module
+from apps.miniapp_api.integrations.notion_public import _client as notion_client, query_public_tasks
+from apps.miniapp_api.routers import briefs as briefs_router
 from apps.miniapp_api.routers import skills as skills_router
+from apps.miniapp_api.routers.chat import router as chat_router
+from apps.miniapp_api.routers.public_tasks import router as public_tasks_router
+from apps.miniapp_api.routers.tasks import router as tasks_router
+from apps.miniapp_api.services.llm_provider import LLMProvider
+from apps.miniapp_api.services.skills_service import SkillsRepository
+from apps.miniapp_api.services.telegram_exporter import TelegramExporter
+
 
 logger = logging.getLogger("miniapp_api")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
 app = FastAPI(
     title="Miniapp API",
-    version="1.0.0",
+    version="2.0.0",
     openapi_url="/api/openapi.json",
     docs_url=None,
     redoc_url=None,
 )
 
-app.state.skills_config_error = None
+skills_repo = SkillsRepository()
+llm_provider = LLMProvider()
+telegram_exporter = TelegramExporter()
 
-# CORS for local dev
-allowed_origins = [
-    "https://miniapp.dmitrybond.tech",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+
+def _parse_cors_origins() -> List[str]:
+    raw = os.getenv("CORS_ORIGINS")
+    if not raw:
+        return [
+            "https://miniapp.dmitrybond.tech",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+    parsed = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return parsed or [
+        "https://miniapp.dmitrybond.tech",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=_parse_cors_origins(),
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    max_age=86400,
 )
-
-# Include routers after app is created
-try:
-    from apps.miniapp_api.routers.public_tasks import router as public_tasks_router
-
-    app.include_router(public_tasks_router, prefix="/api")
-except Exception:
-    logging.getLogger(__name__).exception("Failed to include public_tasks router")
-
-try:
-    from apps.miniapp_api.routers import briefs as briefs_router
-
-    app.include_router(briefs_router.router, prefix="/api")
-    app.include_router(briefs_router.legacy_router)
-except Exception:
-    logging.getLogger(__name__).exception("Failed to include briefs router")
-
-
-@app.get("/api/healthz", include_in_schema=False)
-async def healthz_api() -> dict:
-    notion_token = bool(env_utils.notion_token())
-    notion_skills = bool(env_utils.skills_db())
-    notion_tasks = bool(env_utils.tasks_db())
-    missing = []
-    if not notion_token:
-        missing.append("NOTION_API_KEY")
-    if not notion_skills:
-        missing.append("NOTION_DB_SKILLS")
-    if not notion_tasks:
-        missing.append("NOTION_PUBLIC_TASKS_DB_ID")
-
-    if missing:
-        return {
-            "ok": True,
-            "status": "degraded",
-            "notion": {"status": "unreachable", "missing": missing},
-        }
-    return {"ok": True, "status": "ok"}
-
-
-@app.get("/api/healthz/revision", include_in_schema=False)
-def healthz_revision_api() -> dict:
-    revision = os.getenv("org.opencontainers.image.revision") or os.getenv("APP_REVISION") or "unknown"
-    return {"revision": revision}
 
 
 @app.on_event("startup")
-async def init_chat_storage() -> None:
+async def on_startup() -> None:
+    app.state.start_time = time.time()
+    app.state.skills_repo = skills_repo
+    app.state.llm_provider = llm_provider
+    app.state.telegram_exporter = telegram_exporter
+    app.state.tasks_state = "unknown"
     try:
-        init_db()
-    except Exception:  # noqa: BLE001
-        logger.exception("Chat database init failed")
+        skills_repo.refresh()
+    except Exception as exc:  # pragma: no cover - defensive load
+        logger.warning("Failed to preload skills: %s", exc)
+    try:
+        snapshot = env_utils.notion_env_snapshot()
+        logger.info(
+            "notion_env token=%s skills_db=%s tasks_db=%s",
+            snapshot["token"],
+            snapshot["skills_db"],
+            snapshot["tasks_db"],
+        )
+    except Exception as exc:  # pragma: no cover - defensive log
+        logger.debug("Failed to log notion env snapshot: %s", exc)
 
 
 @app.on_event("startup")
 async def log_routes() -> None:
     try:
-        route_paths = sorted([r.path for r in app.routes if isinstance(r, APIRoute)])
-        logger.info("Registered routes (miniapp_api): %s", route_paths)
-    except Exception as e:
-        logger.debug("Failed to list routes: %s", e.__class__.__name__)
+        paths = sorted({route.path for route in app.routes if isinstance(route, APIRoute)})
+        logger.info("Registered routes: %s", paths)
+    except Exception as exc:  # pragma: no cover - diagnostics only
+        logger.debug("Failed to enumerate routes: %s", exc)
 
 
-@app.on_event("startup")
-async def log_notion_env_snapshot() -> None:
+@app.get("/api/healthz", include_in_schema=False)
+async def healthz() -> Dict[str, Any]:
+    snapshot = skills_repo.snapshot()
+    notion_snapshot = env_utils.notion_env_snapshot()
+    tasks_state = getattr(app.state, "tasks_state", "unknown")
+    status = "ok"
+    if not snapshot.notion or tasks_state == "degraded":
+        status = "degraded"
+    return {
+        "status": status,
+        "skills_provider": snapshot.source or "unknown",
+        "used_llm": llm_provider.available,
+        "notion": {
+            "token": notion_snapshot["token"],
+            "skills_db": notion_snapshot["skills_db"],
+            "tasks_db": notion_snapshot["tasks_db"],
+            "tasks_state": tasks_state,
+        },
+        "timestamp": int(time.time()),
+    }
+
+
+@app.get("/api/healthz/revision", include_in_schema=False)
+def healthz_revision() -> Dict[str, str]:
+    revision = os.getenv("org.opencontainers.image.revision") or os.getenv("APP_REVISION") or "unknown"
+    return {"revision": revision}
+
+
+@app.get("/api/public/tasks", include_in_schema=False)
+def alias_public_tasks(
+    statuses: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=50),
+) -> List[dict]:
+    dbid = env_utils.tasks_db()
+    if not dbid:
+        return []
     try:
-        token = env_utils.notion_token()
-        skills_db = env_utils.skills_db()
-        tasks_db = env_utils.tasks_db()
-        logger.info(
-            "NOTION_API_KEY=%s; NOTION_DB_SKILLS=%s; NOTION_PUBLIC_TASKS_DB_ID=%s",
-            f"SET(len:{len(token)})" if token else "EMPTY",
-            "SET" if skills_db else "EMPTY",
-            "SET" if tasks_db else "EMPTY",
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("Failed to log notion env snapshot: %s", exc.__class__.__name__)
-
-
-@app.on_event("startup")
-async def validate_skills_config() -> None:
+        client = notion_client()
+    except Exception:
+        return []
+    parsed = None
+    if statuses and statuses.strip():
+        parsed = [item.strip() for item in statuses.split(",") if item.strip()]
+    if not parsed:
+        parsed = ["In Progress", "Review"]
     try:
-        from apps.miniapp_api.core.settings import SettingsError, get_settings
-
-        settings = get_settings()
-        try:
-            settings.ensure_skills_config()
-            app.state.skills_config_error = None
-        except SettingsError as exc:
-            app.state.skills_config_error = str(exc)
-            logger.error("Skills configuration missing: %s", exc)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Unexpected error while validating skills settings: %s", exc)
-
-app.include_router(skills_router, prefix="/api")
-app.include_router(chat_router_module.router, prefix="/api")
+        return query_public_tasks(client, dbid, parsed, limit)
+    except Exception:
+        return []
 
 
-# Optional diagnostics endpoint guarded by DEBUG_DIAG=1
-try:
-    if os.getenv("DEBUG_DIAG") == "1":
-        @app.get("/diag/env")
-        def diag_env() -> dict:
-            from apps.miniapp_api.core import env as _env
-            t = _env.notion_token()
-            return {
-                "NOTION_TOKEN": "SET" if bool(t) else "EMPTY",
-                "SKILLS_DB": bool(_env.skills_db()),
-                "TASKS_DB": bool(_env.tasks_db()),
-                "TIMEOUT": _env.notion_timeout(),
-            }
-except Exception:
-    pass
+@app.get("/api/public", include_in_schema=False)
+def alias_public_legacy(
+    statuses: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=50),
+) -> List[dict]:
+    return alias_public_tasks(statuses=statuses, limit=limit)
 
 
-@app.post("/api/ask", include_in_schema=False)
-async def ask_alias(payload: chat_router_module.AskRequest) -> chat_router_module.AskResponse:
-    return await chat_router_module.ask(payload)
+app.include_router(chat_router)
+app.include_router(tasks_router)
+app.include_router(public_tasks_router, prefix="/api")
+app.include_router(skills_router.router)
+app.include_router(skills_router.api_router)
+app.include_router(skills_router.alias_router)
+app.include_router(briefs_router.router, prefix="/api")
+app.include_router(briefs_router.legacy_router)
 
 
-@app.post("/api/export/telegram", include_in_schema=False)
-async def export_alias(payload: chat_router_module.ExportRequest) -> chat_router_module.ExportResponse:
-    return await chat_router_module.export_chat(payload)
-
-# Public tasks aliases (/api/public and /public) returning same payload as /api/tasks/public
-try:
-    from fastapi import HTTPException, Query
-    from typing import List, Optional
-
-    from apps.miniapp_api.integrations.notion_public import (
-        _client as _notion_client,
-        query_public_tasks as _query_public_tasks,
-    )
-
-    def _parse_statuses(statuses: Optional[str]) -> Optional[List[str]]:
-        if statuses and statuses.strip():
-            parsed = [s.strip() for s in statuses.split(",") if s.strip()]
-            return parsed or None
-        return None
-
-    def _resolve_dbid() -> str:
-        dbid = env_utils.tasks_db()
-        if not dbid:
-            raise HTTPException(status_code=502, detail={"error": "notion_unreachable"})
-        return dbid
-
-    @app.get("/api/public")
-    def api_public(statuses: Optional[str] = Query(default=None), limit: int = Query(default=20, ge=1, le=50)) -> List[dict]:
-        dbid = _resolve_dbid()
-        sts = _parse_statuses(statuses) or ["In Progress", "Review"]
-        client = _notion_client()
-        return _query_public_tasks(client, dbid, sts, limit)
-except Exception:
-    logging.getLogger(__name__).exception("Failed to register public tasks aliases")
-
+if os.getenv("DEBUG_DIAG") == "1":
+    @app.get("/diag/env", include_in_schema=False)
+    def diag_env() -> Dict[str, Any]:
+        snapshot = env_utils.notion_env_snapshot()
+        return {
+            "NOTION_TOKEN": snapshot["token"],
+            "SKILLS_DB": snapshot["skills_db"],
+            "TASKS_DB": snapshot["tasks_db"],
+            "TIMEOUT": env_utils.notion_timeout(),
+        }

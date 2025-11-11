@@ -22,7 +22,6 @@ services:
 
     volumes:
       - ./data/uploads:/app/uploads
-      - ./data:/app/data
 
     command:
       - uvicorn

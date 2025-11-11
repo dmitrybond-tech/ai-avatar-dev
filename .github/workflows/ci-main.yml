@@ -86,7 +86,7 @@ jobs:
           primary="apps/miniapp-api/Dockerfile"
           fallback="apps/api/Dockerfile"
           if [ -f "$primary" ]; then
-            context_dir="apps/miniapp-api"
+            context_dir="."
             dockerfile="$primary"
           elif [ -f "$fallback" ]; then
             context_dir="apps/api"

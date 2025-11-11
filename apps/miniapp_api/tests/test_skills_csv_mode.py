@@ -11,7 +11,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from apps.miniapp_api.routers import skills as skills_router
+from apps.miniapp_api.services import skills_service
 
 
 def _write_csv(path: Path) -> None:
@@ -32,19 +32,15 @@ def test_csv_mode_skips_notion_client(monkeypatch, tmp_path):
     monkeypatch.setenv("SKILLS_SOURCE", "csv")
     monkeypatch.setenv("SKILLS_CSV_PATH", str(csv_path))
 
-    invoked = False
-
     class _SentinelClient:  # noqa: N801 - test shim
         def __init__(self, *args, **kwargs):
-            nonlocal invoked
-            invoked = True
             raise AssertionError("Notion client must not be constructed in CSV mode")
 
-    monkeypatch.setattr(skills_router, "Client", _SentinelClient)
+    monkeypatch.setattr(skills_service, "Client", _SentinelClient)
 
-    result = skills_router.skills()
+    repo = skills_service.SkillsRepository()
+    snapshot = repo.refresh()
 
-    assert not invoked
-    assert result["items"]
-    assert result["items"][0]["slug"] == "sample-skill"
+    assert snapshot.skills
+    assert snapshot.skills[0].key == "sample-skill"
 

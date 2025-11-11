@@ -36,7 +36,7 @@ services:
       - SKILLS_CSV_PATH=${SKILLS_CSV_PATH:-/app/data/skills.csv}
       - WEBSITE_ORIGIN=${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
     volumes:
-      - ./data:/app/data
+      - ./data/uploads:/app/uploads
 
   bot:
     image: ${IMAGE_BOT:-ghcr.io/dmitrybond-tech/ai-avatar-miniapp-bot}:${IMAGE_TAG:-main}

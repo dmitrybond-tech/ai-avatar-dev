@@ -1,0 +1,42 @@
+Title EN,Bullets EN,Bullets RU,Examples EN,Examples RU,Short EN,Short RU,Slug,Tags,Title RU
+Automation,"Build ETL/ELT pipelines in Python (pandas, SQLAlchemy; cron or lightweight schedulers).
+Write data and infrastructure migration scripts (DBs, cloud moves to AWS/Azure/GCP).
+Automate routine tasks and back-office workflows.
+Integrate with CRMs/ERPs/ticketing systems via REST/GraphQL/Webhooks.
+Set up telemetry and analytics pipelines within Airtable, Notion or similar tools.",Автоматизирует бизнес-процессы и типовые операции в компаниях,"Automated the entire hardware onboarding process for a robotics startup, reducing manual effort by 70%.
+Migrated a set of supply chain analytics dashboards from Google Sheets to a reliable data warehouse stack with dbt, Redshift, Apache Airflow and Slack notifications.
+Helped a telecom provider to automate data integrations with Salesforce and internal data marts, cutting reporting delays from days to hours.
+Built async integrations with a third-party CRM (Bitrix24) for a consulting firm, reducing manual data entry by 60%.
+Designed a fully automated backup and recovery system for an infrastructure company covering over 120TB of data.",Автоматизировал сбор и обработку данных для аналитиков в телеком-компании.,"Sets up automations, ETL/ELT pipelines and integrations between datasets, CRMs and custom tooling.",Отвечает за быструю интеграцию данных и автоматизацию рутины.,automation,"automation,etl,integrations,pipelines",Автоматизация
+AI Playbooks,"Create AI-assisted workflows for knowledge management, support, community management and sales enablement.
+Teach teams how to integrate LLMs into daily routines, keeping humans in control of outputs.
+Prototype internal AI agents that triage support cases or prepare draft responses for operators.
+Audit existing AI workflows for compliance, privacy and data retention.",Создает AI-воркфлоу и шаблоны использования ИИ для команд поддержки и продаж.,"Built an AI-assisted knowledge base for a community of 250+ product managers to quickly answer questions and surface relevant success stories.
+Designed an AI-enabled support triage system using LLMs for intent detection and first-response generation at a fintech company.
+Helped marketing and product teams at an energy startup establish AI playbooks for customer research and campaign planning.
+Created a semi-automated transcript summarization workflow for weekly executive syncs at a remote-first company.
+Implemented AI co-pilot tooling for a B2B SaaS sales team to keep all outreach, proposals, and customer data in sync.",Построил AI-пайплайны для поддержки и сообщества, которые экономят 20+ часов в неделю на запросах и анализе.,Designs AI-enabled playbooks for support, sales and knowledge management teams.,Делает AI-плейбуки и воркфлоу для команд поддержки, продаж и знаний.,ai-playbooks,"ai,llm,product,workflows",AI-плейбуки
+Product Strategy,"Validate new product and service ideas, refine scopes before engineering starts.
+Run customer discovery interviews and synthesize insights.
+Translate fuzzy requests into actionable roadmaps and actionable tasks.
+Prioritize initiatives with quantitative and qualitative evidence, balancing business and tech constraints.
+Support product and leadership teams with decision-making dashboards and short executive briefs.",Ведёт customer discovery и помогает сформировать roadmap на понятном языке для бизнеса.,"Designed the first versions of a B2B SaaS product for distributed teams, including positioning, pricing, and go-to-market strategy.
+Coached an early-stage marketplace team on refining their value proposition via customer discovery interviews, leading to a 3x conversion improvement.
+Built strategic dashboards for a telecom operator to prioritize infrastructure upgrades based on revenue impact.
+Helped an enterprise software vendor reframe a stalled product initiative with a new positioning and execution playbook.",Интервьюировал ключевых клиентов в B2B SaaS, сформировал roadmap и Go-to-market.,Turns unstructured product asks into actionable plans and roadmaps.,Помогает сформулировать и приоритизировать продуктовые инициативы.,product-strategy,"product,research,roadmap",Продуктовая стратегия
+Project Leadership,"Set up project execution, structure sprints, syncs and workflows for distributed teams.
+Manage cross-functional stakeholders (operations, engineering, product, marketing).
+Establish project governance, status reporting and risk mitigation routines.
+Coordinate external vendors, contractors and internal contributors.","Организует процессы в проектах, выстраивает взаимодействие между командами, следит за рисками и сроками.","Led strategic initiatives with distributed teams across telecom, energy, and finance sectors, ensuring timely delivery and stakeholder buy-in.
+Managed 15+ remote contractors, aligning their output with a complex roadmap for a transportation company.
+Structured delivery with external suppliers for a multi-million infrastructure upgrade, mitigating vendor slippage.
+Revamped program governance for a venture fund's portfolio company, enabling faster decision-making and clearer escalation paths.
+Improved reporting cadence and visibility for a C-level leadership team during a high-stakes product launch.",Взял на себя delivery сложного проекта по внедрению новых сервисов в сети связи.","Keeps strategic projects on track, coordinating stakeholders and vendors.",Управляет сложными проектами, синхронизирует команды и подрядчиков.,project-leadership,"delivery,program management,stakeholders",Проектное руководство
+Process Diagnostics,"Audit existing workflows, documentation, roles and tooling to find failure modes.
+Design remediation plans outlining responsibilities, resources, and timelines.
+Coach teams on remediation and help align leadership on priorities.
+Track improvements with quantifiable business metrics (delivery speed, quality, retention).",Проводит диагностику бизнес-процессов и помогает построить план улучшений.,"Diagnosed process gaps at a telecom company, resulting in a 40% reduction in incident response times.
+Helped an energy startup restructure their operations team, improving on-call coverage and customer satisfaction.
+Facilitated root-cause analysis workshops for a fintech firm, uncovering 12 critical issues impacting customer onboarding.
+Built a post-mortem remediation playbook for a logistics company, preventing recurrence of high-severity incidents.",Провёл аудит бизнес-процессов в энергетической компании, предложил программу улучшений и помог внедрить.,"Identifies weak links in operations and introduces fixes with measurable impact.",Диагностирует процессы и помогает реализовать улучшения.,process-diagnostics,"audit,operations,retention",Диагностика процессов
+

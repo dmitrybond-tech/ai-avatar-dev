@@ -1,297 +1,183 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-import os
-import uuid
-from datetime import datetime, timezone
-from typing import Literal, Optional
+import time
+from typing import Any, Dict, List
 
-import httpx
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
-from sqlmodel import select
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 
-from ..models.chat import ChatMessage, ChatSession, get_session
-from ..services.llm import llm_reply
-from ..utils.telegram import send_message, verify_webapp_initdata
+from apps.miniapp_api.models.chat_io import AskRequest, AskResponse, ChatMessagePayload, ExportRequest
+from apps.miniapp_api.services.llm_provider import LLMProvider
+from apps.miniapp_api.services.skills_service import SkillRecord, SkillsRepository, best_query_from_messages
+from apps.miniapp_api.services.telegram_exporter import TelegramExporter
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["chat"])
-
-SMART_CHAT_ON = os.getenv("SMART_CHAT", "off").strip().lower() in {"1", "true", "yes", "on"}
-_rag = (os.getenv("RAG_MODE") or "extractive").strip().lower()
-RAG_MODE: Literal["extractive", "llm"] = "llm" if _rag == "llm" else "extractive"
-CHAT_PERSONA = (os.getenv("CHAT_PERSONA") or "dima").strip().lower()
-LLM_PROVIDER = (os.getenv("LLM_PROVIDER") or "openai").strip().lower()
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini").strip()
-SKILLS_URL_BASE = "http://127.0.0.1:8000/api/skills"
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or ""
+router = APIRouter(prefix="/api", tags=["chat"])
 
 
-class ConfigResponse(BaseModel):
-    persona: str
-    smart_chat: bool
-    rag_mode: Literal["extractive", "llm"]
-    provider: str
-    model: str
+def _skills_repo(request: Request) -> SkillsRepository:
+    repo = getattr(request.app.state, "skills_repo", None)
+    if repo is None:
+        raise RuntimeError("skills repository not initialized")
+    return repo
 
 
-class AskRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=4000)
-    lang: str = Field(default="ru")
-    llm: bool = Field(default=False)
-    session_id: Optional[str] = Field(default=None)
-    tg_init_data: Optional[str] = Field(default=None)
+def _llm_provider(request: Request) -> LLMProvider:
+    provider = getattr(request.app.state, "llm_provider", None)
+    if provider is None:
+        raise RuntimeError("llm provider not initialized")
+    return provider
 
 
-class AskResponse(BaseModel):
-    reply: str
-    mode: Literal["llm", "stub"]
-    session_id: str
-    persona: str
+def _telegram_exporter(request: Request) -> TelegramExporter:
+    exporter = getattr(request.app.state, "telegram_exporter", None)
+    if exporter is None:
+        raise RuntimeError("telegram exporter not initialized")
+    return exporter
 
 
-class ExportRequest(BaseModel):
-    session_id: str = Field(..., min_length=8)
-    tg_init_data: Optional[str] = Field(default=None)
+@router.get("/config")
+async def get_config(
+    skills_repo: SkillsRepository = Depends(_skills_repo),
+    llm_provider: LLMProvider = Depends(_llm_provider),
+    telegram: TelegramExporter = Depends(_telegram_exporter),
+) -> Dict[str, Any]:
+    snapshot = skills_repo.snapshot()
+    return {
+        "persona": llm_provider.persona,
+        "llmAvailable": llm_provider.available,
+        "notion": snapshot.notion,
+        "csvFallback": snapshot.csv_fallback,
+        "telegramExport": telegram.available,
+        "model": llm_provider.model,
+    }
 
 
-class ExportResponse(BaseModel):
-    ok: bool
-    count: int
-    bytes: int
-    already_exported: bool = Field(default=False)
+@router.post("/client-log", status_code=status.HTTP_202_ACCEPTED)
+async def client_log(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
+    request_id = f"log-{int(time.time() * 1000)}"
+    logger.info("client-log %s %s", request_id, payload)
+    return {"ok": True, "request_id": request_id}
 
 
-def _persona_intro(lang: str, persona: str) -> str:
-    if lang == "en":
-        return "Hi! I'm Dima's assistant. How can I help you today?"
-    return "Привет! Я ассистент Димы. Чем могу помочь?"
+@router.post("/ask", response_model=AskResponse)
+async def ask(
+    body: AskRequest,
+    skills_repo: SkillsRepository = Depends(_skills_repo),
+    llm_provider: LLMProvider = Depends(_llm_provider),
+) -> AskResponse:
+    user_messages = [message.content for message in body.messages if message.role == "user"]
+    if not user_messages:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"error": "missing_user_message"})
+
+    query = best_query_from_messages(user_messages[-3:])
+    top_k = body.top_k or 5
+    top_skills: List[SkillRecord] = skills_repo.relevant_skills(query, top_k)
+
+    answer = _build_deterministic_answer(body.lang, top_skills)
+    used_llm = False
+
+    if body.use_llm and llm_provider.available and query:
+        context_lines = _build_context(body.lang, top_skills)
+        user_prompt = _build_user_prompt(query, user_messages, context_lines)
+        system_prompt = _build_system_prompt(body.lang)
+        llm_answer = await llm_provider.generate(system_prompt, user_prompt)
+        if llm_answer:
+            answer = llm_answer
+            used_llm = True
+
+    sources = [skill.key for skill in top_skills] if top_skills else []
+    return AskResponse(
+        answer=answer,
+        sources=sources,
+        used_llm=used_llm,
+        persona=llm_provider.persona,
+    )
 
 
-def _normalize_lang(lang: str) -> Literal["ru", "en"]:
-    lang = (lang or "").strip().lower()
-    if lang.startswith("en"):
-        return "en"
-    return "ru"
-
-
-def _has_llm_credentials(provider: str) -> bool:
-    if provider == "groq":
-        return bool(os.getenv("GROQ_API_KEY"))
-    if provider == "openai":
-        return bool(os.getenv("OPENAI_API_KEY"))
-    return False
-
-
-async def _fetch_skills_snip(lang: str) -> str:
-    url = f"{SKILLS_URL_BASE}?lang={lang}"
+@router.post("/export/telegram")
+async def export_telegram(
+    request: Request,
+    body: ExportRequest,
+    dry_run: bool = Query(default=False, alias="dryRun"),
+    exporter: TelegramExporter = Depends(_telegram_exporter),
+) -> Dict[str, Any]:
+    if not exporter.available and not dry_run:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "telegram_unavailable"})
+    payload_messages = body.messages or []
+    meta = body.meta.copy() if body.meta else {}
+    meta.update(
+        {
+            "ip": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent"),
+        }
+    )
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            payload = response.json()
-    except Exception as exc:  # noqa: BLE001 - external call
-        logger.debug("Skills fetch failed: %s", exc)
-        return ""
+        return await exporter.send(payload_messages, meta=meta, title=body.title, dry_run=dry_run)
+    except Exception as exc:
+        logger.warning("Telegram export failed: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail={"error": "telegram_failed"}) from exc
 
-    if not isinstance(payload, list):
-        return ""
 
-    lines: list[str] = []
-    for item in payload[:5]:
-        if not isinstance(item, dict):
-            continue
-        title = str(item.get("title") or item.get("slug") or "").strip()
-        summary = str(item.get("short") or "").strip()
-        if not title:
-            continue
-        if summary:
-            lines.append(f"- {title}: {summary}")
-        else:
-            lines.append(f"- {title}")
+def _build_context(lang: str, skills: List[SkillRecord]) -> str:
+    if not skills:
+        return ""
+    lines: List[str] = []
+    for skill in skills:
+        lines.append(f"{skill.title(lang)} — {skill.summary(lang)}")
+        for bullet in skill.bullets(lang)[:2]:
+            lines.append(f"- {bullet}")
     return "\n".join(lines)
 
 
-def _stub_reply(lang: str, skills_snip: str) -> str:
-    if lang == "en":
-        parts = [
-            "Here is what Dima focuses on right now:",
-        ]
-        if skills_snip:
-            parts.append(skills_snip)
-        parts.append("If you need a deeper answer, I can forward this to Dima.")
-        return "\n".join(parts)
-    parts = ["Коротко о текущих направлениях Димы:"]
-    if skills_snip:
-        parts.append(skills_snip)
-    parts.append("Если понадобится подробнее, я передам запрос Диме.")
-    return "\n".join(parts)
+def _build_user_prompt(query: str, user_messages: List[str], context: str) -> str:
+    history = "\n\n".join(f"User said: {message}" for message in user_messages[-3:])
+    prompt = f"{history}\n\nLast question:\n{query}"
+    if context:
+        prompt += f"\n\nRelevant skills:\n{context}"
+    return prompt
 
 
-def _format_timestamp(value: datetime) -> str:
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat()
+def _build_system_prompt(lang: str) -> str:
+    base = (
+        "Answer as Dima's assistant. Prefer concrete capabilities from the provided skills. "
+        "If something is outside the skills, say how Dima can still help."
+    )
+    if lang == "ru":
+        return base + " Отвечай на русском языке и будь лаконичным."
+    return base + " Answer in English and keep it concise."
 
 
-async def _send_transcript(token: str, chat_id: int, text: str) -> bool:
-    if not text:
-        return False
+def _build_deterministic_answer(lang: str, skills: List[SkillRecord]) -> str:
+    if not skills:
+        return (
+            "Я пока ищу нужную информацию, но могу рассказать об опыте Димы и подобрать релевантные навыки."
+            if lang == "ru"
+            else "I’ll clarify Dima’s current focus and find the most relevant skills that might help."
+        )
 
-    max_len = 4000
-    chunks: list[str] = []
-    cursor = 0
-    while cursor < len(text):
-        chunk = text[cursor : cursor + max_len]
-        chunks.append(chunk)
-        cursor += max_len
+    if lang == "ru":
+        header = "Вот чем Дима может помочь:"
+        bullets = [f"• {skill.title('ru')}: {skill.summary('ru')}" for skill in skills[:3]]
+        extra = skills[0].bullets("ru") if skills else []
+        for line in extra:
+            if len(bullets) >= 4:
+                break
+            bullets.append(f"• {line}")
+        while len(bullets) < 2:
+            bullets.append("• Подберёт подход и поможет связаться с нужными экспертами.")
+        closing = "Если задача отличается, Дима предложит подход или познакомит с нужными людьми."
+        return "\n".join([header, *bullets[:4], closing])
 
-    ok = True
-    for idx, chunk in enumerate(chunks):
-        prefix = ""
-        if len(chunks) > 1:
-            prefix = f"[{idx + 1}/{len(chunks)}]\n"
-        success = await send_message(token, chat_id, f"{prefix}{chunk}")
-        if not success:
-            ok = False
+    header = "Here is how Dima can help:"
+    bullets = [f"- {skill.title('en')}: {skill.summary('en')}" for skill in skills[:3]]
+    extra = skills[0].bullets("en") if skills else []
+    for line in extra:
+        if len(bullets) >= 4:
             break
-    return ok
-
-
-@router.get("/chat/config", response_model=ConfigResponse)
-async def chat_config() -> ConfigResponse:
-    return ConfigResponse(
-        persona=CHAT_PERSONA,
-        smart_chat=SMART_CHAT_ON,
-        rag_mode=RAG_MODE,  # type: ignore[arg-type]
-        provider=LLM_PROVIDER,
-        model=LLM_MODEL,
-    )
-
-
-@router.post("/chat/ask", response_model=AskResponse)
-async def ask(payload: AskRequest) -> AskResponse:
-    lang = _normalize_lang(payload.lang)
-    session_id = payload.session_id.strip() if payload.session_id else str(uuid.uuid4())
-    raw_text = payload.text.strip()
-    if not raw_text:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"error": "empty_text"})
-
-    tg_user_id: Optional[int] = None
-    if payload.tg_init_data and TELEGRAM_TOKEN:
-        tg_user_id = verify_webapp_initdata(payload.tg_init_data, TELEGRAM_TOKEN)
-
-    with get_session() as session:
-        record = session.get(ChatSession, session_id)
-        if record is None:
-            record = ChatSession(id=session_id, tg_user_id=tg_user_id, lang=lang)
-            session.add(record)
-        else:
-            if tg_user_id and record.tg_user_id != tg_user_id:
-                record.tg_user_id = tg_user_id
-            if record.lang != lang:
-                record.lang = lang
-
-        message = ChatMessage(session_id=session_id, role="user", text=raw_text)
-        session.add(message)
-        session.commit()
-
-    skills_snip = await _fetch_skills_snip(lang)
-    mode: Literal["llm", "stub"] = "stub"
-    reply_body = ""
-
-    provider_ready = _has_llm_credentials(LLM_PROVIDER)
-    wants_llm = bool(payload.llm) or (SMART_CHAT_ON and provider_ready)
-    if wants_llm and provider_ready:
-        reply_text = await asyncio.to_thread(llm_reply, lang, raw_text, skills_snip)
-        if reply_text:
-            mode = "llm"
-            reply_body = reply_text.strip()
-
-    if not reply_body:
-        reply_body = _stub_reply(lang, skills_snip)
-
-    reply_text_full = f"{_persona_intro(lang, CHAT_PERSONA)}\n\n{reply_body}".strip()
-
-    with get_session() as session:
-        assistant_msg = ChatMessage(session_id=session_id, role="assistant", text=reply_text_full)
-        session.add(assistant_msg)
-        session.commit()
-
-    return AskResponse(
-        reply=reply_text_full,
-        mode=mode,
-        session_id=session_id,
-        persona=CHAT_PERSONA,
-    )
-
-
-@router.post("/chat/export", response_model=ExportResponse)
-async def export_chat(payload: ExportRequest) -> ExportResponse:
-    session_id = payload.session_id.strip()
-    if not session_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"error": "missing_session"})
-
-    if not TELEGRAM_TOKEN:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "telegram_unconfigured"})
-
-    tg_user_id: Optional[int] = None
-    with get_session() as session:
-        chat_session = session.get(ChatSession, session_id)
-        if chat_session is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"error": "session_not_found"})
-
-        tg_user_id = chat_session.tg_user_id
-        if payload.tg_init_data:
-            validated = verify_webapp_initdata(payload.tg_init_data, TELEGRAM_TOKEN)
-            if validated:
-                tg_user_id = validated
-                if chat_session.tg_user_id != validated:
-                    chat_session.tg_user_id = validated
-
-        if not tg_user_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"error": "missing_user"})
-
-        session.add(chat_session)
-        session.commit()
-
-        messages = session.exec(
-            select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.ts)
-        ).all()
-
-    header_lines = [
-        f"Chat session: {session_id}",
-        f"Started: {_format_timestamp(chat_session.started_at)}",
-        f"Export attempt: {_format_timestamp(datetime.now(timezone.utc))}",
-        "",
-    ]
-    transcript_lines = header_lines.copy()
-    for msg in messages:
-        transcript_lines.append(f"[{msg.role.upper()}] {_format_timestamp(msg.ts)}")
-        transcript_lines.append(msg.text)
-        transcript_lines.append("")
-
-    transcript = "\n".join(transcript_lines).strip()
-    already_exported = chat_session.exported_at is not None
-
-    ok = True
-    if not already_exported:
-        ok = await _send_transcript(TELEGRAM_TOKEN, tg_user_id, transcript)
-        if ok:
-            with get_session() as session:
-                fresh = session.get(ChatSession, session_id)
-                if fresh:
-                    fresh.exported_at = datetime.now(timezone.utc)
-                    session.add(fresh)
-                    session.commit()
-    bytes_len = len(transcript.encode("utf-8"))
-    return ExportResponse(
-        ok=ok,
-        count=len(messages),
-        bytes=bytes_len,
-        already_exported=already_exported,
-    )
-
+        bullets.append(f"- {line}")
+    while len(bullets) < 2:
+        bullets.append("- He can outline next steps and connect you with the right specialists.")
+    closing = "If your request is a bit different, Dima can still suggest a path or connect you with the right person."
+    return "\n".join([header, *bullets[:4], closing])

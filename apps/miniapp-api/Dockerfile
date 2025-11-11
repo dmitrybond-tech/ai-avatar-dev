@@ -11,11 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY requirements.txt /tmp/requirements.txt
+COPY apps/miniapp_api/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm -f /tmp/requirements.txt
 
 # Copy service source into staging directory
-COPY . /app/src
+COPY apps/miniapp_api /app/src
 
 # Ensure import-friendly aliases
 RUN mkdir -p apps && \
@@ -23,6 +23,12 @@ RUN mkdir -p apps && \
     mv src apps/miniapp_api && \
     touch apps/__init__.py && \
     touch apps/miniapp_api/__init__.py
+
+# Provide default data assets inside the image
+RUN mkdir -p /app/data && cp apps/miniapp_api/data/skills.csv /app/data/skills.csv
+
+# Import self-test to catch packaging issues early
+RUN python -c "import apps.miniapp_api.core.env as env; print('env_ok')"
 
 EXPOSE 8000
 
