@@ -1,0 +1,49 @@
+name: Compose Validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: Validate Compose Config
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Docker versions
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Ensure single root services key per compose file
+        run: |
+          shopt -s nullglob
+          status=0
+          for file in infra/compose/*.yml infra/compose/*.yaml; do
+            [[ -e "$file" ]] || continue
+            count=$(grep -E '^[[:space:]]*services:[[:space:]]*$' "$file" | wc -l)
+            if (( count > 1 )); then
+              echo "::error file=$file::Expected at most 1 root-level services key, found $count."
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Validate combined compose config
+        run: |
+          docker compose \
+            -f infra/compose/miniapp.compose.yaml \
+            -f infra/compose/miniapp.runtime.yml \
+            -f infra/compose/miniapp.stack.yml \
+            -f infra/compose/miniapp.notion.override.yml \
+            -f infra/compose/miniapp.final.override.yml \
+            -f infra/compose/miniapp.readiness.override.yml \
+            config > /dev/null
+
