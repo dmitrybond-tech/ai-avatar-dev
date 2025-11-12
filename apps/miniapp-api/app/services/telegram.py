@@ -39,19 +39,64 @@ def format_transcript(messages: Iterable[ChatMessage], meta: Optional[Dict[str, 
     return "\n\n".join(lines)
 
 
+def _chunk_text(text: str, limit: int = 4096) -> List[str]:
+    """Split text into chunks respecting line boundaries."""
+    chunks: List[str] = []
+    current = ""
+    for line in text.splitlines():
+        if len(current) + len(line) + 1 > limit:
+            if current:
+                chunks.append(current)
+            current = line
+        else:
+            current = (current + "\n" + line) if current else line
+    if current:
+        chunks.append(current)
+    return chunks if chunks else [text]
+
+
 class TelegramExporter:
     def __init__(self) -> None:
+        # Env with backward-compatible fallbacks
         self._token = os.getenv("TELEGRAM_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
-        self._chat_id = os.getenv("ADMIN_CHAT_ID")
+        self._chat_id = os.getenv("ADMIN_CHAT_ID") or os.getenv("TELEGRAM_ADMIN_CHAT_ID")
         timeout_raw = os.getenv("TELEGRAM_TIMEOUT") or ""
         try:
-            self._timeout = float(timeout_raw) if timeout_raw else 10.0
+            self._timeout = float(timeout_raw) if timeout_raw else 15.0
         except ValueError:
-            self._timeout = 10.0
+            self._timeout = 15.0
 
     @property
     def available(self) -> bool:
         return bool(self._token and self._chat_id)
+
+    async def _tg_api(
+        self,
+        method: str,
+        payload: Dict[str, Any],
+        files: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Call Telegram Bot API with error handling."""
+        if not self._token:
+            raise ValueError("TELEGRAM_TOKEN is not set")
+        url = f"https://api.telegram.org/bot{self._token}/{method}"
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            if files:
+                response = await client.post(url, data=payload, files=files)
+            else:
+                response = await client.post(url, json=payload)
+        response.raise_for_status()
+        data = response.json()
+        if not data.get("ok"):
+            raise RuntimeError(f"Telegram error: {data}")
+        return data
+
+    async def selftest(self) -> Dict[str, Any]:
+        """Test Telegram bot token by calling getMe."""
+        if not self._token:
+            raise ValueError("TELEGRAM_TOKEN is not set")
+        data = await self._tg_api("getMe", {})
+        return {"ok": True, "bot": data.get("result", {})}
 
     async def send(
         self,
@@ -63,30 +108,41 @@ class TelegramExporter:
     ) -> Dict[str, Any]:
         if dry_run or not self.available:
             logger.info("Telegram export dry-run or unavailable (dry_run=%s, available=%s)", dry_run, self.available)
-            return {"ok": True, "message_id": "dry_run"}
+            return {"ok": True, "message_id": "dry_run", "sent": {"method": "dry_run"}}
+
+        if not self._chat_id:
+            raise ValueError("ADMIN_CHAT_ID is not set")
 
         transcript = format_transcript(messages, meta=meta, title=title)
         if not transcript:
             return {"ok": False, "error": "empty_transcript"}
 
-        url = f"https://api.telegram.org/bot{self._token}/sendMessage"
-        payload = {
-            "chat_id": self._chat_id,
-            "text": transcript,
-            "parse_mode": "MarkdownV2",
-            "disable_web_page_preview": True,
-        }
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            response = await client.post(url, json=payload)
-        try:
-            response.raise_for_status()
-            data = response.json()
-        except Exception as exc:  # pragma: no cover - network failure
-            logger.error("Telegram export failed: %s", exc)
-            raise
-        if not data.get("ok"):
-            logger.error("Telegram responded with error: %s", data)
-            raise RuntimeError("telegram_error")
-        message_id = data.get("result", {}).get("message_id")
-        return {"ok": True, "message_id": message_id}
+        # For short messages (≤3500 chars), use sendMessage with chunking if needed
+        # For longer messages, use sendDocument
+        if len(transcript) <= 3500:
+            chunks = _chunk_text(transcript, limit=4096)
+            sent_count = 0
+            for chunk in chunks:
+                payload = {
+                    "chat_id": self._chat_id,
+                    "text": chunk,
+                    "parse_mode": "MarkdownV2",
+                    "disable_web_page_preview": True,
+                }
+                await self._tg_api("sendMessage", payload)
+                sent_count += 1
+            message_id = None  # Multiple messages, no single ID
+            return {"ok": True, "sent": {"method": "sendMessage", "parts": sent_count}}
+        else:
+            # Use sendDocument for large transcripts
+            transcript_bytes = transcript.encode("utf-8")
+            filename = (title or "conversation") + ".txt"
+            files = {"document": (filename, transcript_bytes, "text/plain; charset=utf-8")}
+            payload = {
+                "chat_id": self._chat_id,
+                "caption": title or "",
+            }
+            data = await self._tg_api("sendDocument", payload, files=files)
+            message_id = data.get("result", {}).get("message_id")
+            return {"ok": True, "message_id": message_id, "sent": {"method": "sendDocument"}}
 

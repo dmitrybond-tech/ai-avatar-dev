@@ -129,6 +129,26 @@ async def ask(
     )
 
 
+@router.get("/telegram/selftest")
+async def telegram_selftest(
+    exporter: TelegramExporter = Depends(get_telegram_exporter),
+) -> Dict[str, Any]:
+    """Test Telegram bot token connectivity."""
+    try:
+        return await exporter.selftest()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.error("Telegram selftest failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Telegram request failed: {exc}",
+        ) from exc
+
+
 @router.post("/export/telegram")
 async def export_telegram(
     request: Request,
@@ -137,7 +157,10 @@ async def export_telegram(
     exporter: TelegramExporter = Depends(get_telegram_exporter),
 ) -> Dict[str, Any]:
     if not exporter.available and not dry_run:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "telegram_unavailable"})
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="TELEGRAM_TOKEN or ADMIN_CHAT_ID is not set",
+        )
 
     payload_messages = body.messages or []
     meta = body.meta or {}
@@ -154,9 +177,20 @@ async def export_telegram(
             title=body.title,
             dry_run=dry_run,
         )
+    except ValueError as exc:
+        # Missing env vars or other validation errors
+        logger.warning("Telegram export validation failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
+        # Network errors, API errors, etc.
         logger.warning("Telegram export failed: %s", exc)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail={"error": "telegram_failed"}) from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Telegram request failed: {exc}",
+        ) from exc
     return result
 
 
