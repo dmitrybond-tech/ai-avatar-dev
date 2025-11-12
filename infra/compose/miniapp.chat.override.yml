@@ -1,0 +1,14 @@
+# Chat export and FatContext override
+# Usage: docker compose -f miniapp.compose.yaml -f miniapp.chat.override.yml up
+services:
+  api:
+    environment:
+      CHAT_DIR: /app/data/chats
+      FAT_MSG_LIMIT: 30
+      FAT_BYTES_LIMIT: 24576
+      FAT_SKILL_TOPK: 5
+      FAT_ROTATE_MAX_LINES: 1000
+      REDACT_EXPORT: "true"
+    volumes:
+      - ../../apps/miniapp-api/data/chats:/app/data/chats:rw
+

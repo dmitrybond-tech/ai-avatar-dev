@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from .core import env as env_utils
 from .routers.chat_v2 import router as chat_router
+from .routers.chat_export import router as chat_export_router
 from .routers.public_tasks import router as public_tasks_router
 from .routers.skills import api_router as skills_api_router, alias_router as skills_alias_router, router as skills_router
 from .routers.briefs import router as briefs_router
@@ -92,6 +93,7 @@ async def on_startup() -> None:
 api_router = APIRouter(prefix="/api", tags=["api"])
 
 app.include_router(chat_router)
+app.include_router(chat_export_router)
 app.include_router(tasks_router)
 app.include_router(public_tasks_router, prefix="/api")
 app.include_router(skills_router)
