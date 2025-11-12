@@ -9,6 +9,14 @@
     "whatICanDo": "What I can do?",
     "taskStatus": "Task status"
   },
+  "chat": {
+    "smartLLM": "Smart answer (LLM)",
+    "smartLLMOn": "On",
+    "smartLLMOff": "Off",
+    "smartLLMUnavailable": "Unavailable",
+    "modeLLM": "Mode: LLM",
+    "modeSkills": "Mode: Skills"
+  },
   "brief": {
     "title": "Upload brief for estimate",
     "chooseFile": "Choose a file",

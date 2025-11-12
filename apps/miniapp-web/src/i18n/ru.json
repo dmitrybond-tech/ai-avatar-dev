@@ -9,6 +9,14 @@
     "whatICanDo": "Что я умею?",
     "taskStatus": "Статус задач"
   },
+  "chat": {
+    "smartLLM": "Умный ответ (LLM)",
+    "smartLLMOn": "Вкл",
+    "smartLLMOff": "Выкл",
+    "smartLLMUnavailable": "Недоступно",
+    "modeLLM": "Режим: LLM",
+    "modeSkills": "Режим: Навыки"
+  },
   "brief": {
     "title": "Загрузка ТЗ на оценку",
     "chooseFile": "Выберите файл",

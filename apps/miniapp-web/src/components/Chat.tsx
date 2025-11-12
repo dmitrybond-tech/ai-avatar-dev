@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChatRequestError, getChatConfig, postChat, postChatExport, EXPORT_TELEGRAM_ENDPOINT } from "../api/client";
+import { ChatRequestError, getChatConfig, postChat, postChatExport, EXPORT_TELEGRAM_ENDPOINT, askGrok, askSkills } from "../api/client";
 import type { ChatAskPayload, ChatConfig, ChatExportPayload, ChatMessageDto } from "../types";
 import type { Locale } from "../shared/i18n/resolveLocale";
 import { useChatSessionId } from "../hooks/useChatSessionId";
+import { useSmartLLM } from "../hooks/useSmartLLM";
+import { useI18n } from "../lib/i18n";
 import { getTelegramWebApp, isTelegramWebView } from "../lib/tg";
 import { apiUrl } from "../shared/api";
 import { streamReply } from "../lib/sse";
@@ -79,6 +81,8 @@ const serializeHistory = (key: string, msgs: Msg[]): void => {
 export function ChatBox({ lang }: ChatBoxProps) {
   const sessionId = useChatSessionId();
   const sessionKey = `${HISTORY_PREFIX}${sessionId}`;
+  const { t } = useI18n();
+  const [smartLLM, setSmartLLM] = useSmartLLM();
   const [persona, setPersona] = useState<string>(fallbackConfig.persona);
   const introText = useMemo(() => {
     if (lang === "en") {
@@ -95,7 +99,6 @@ export function ChatBox({ lang }: ChatBoxProps) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [smartEnabled, setSmartEnabled] = useState(false);
   const [config, setConfig] = useState<ChatConfig>(fallbackConfig);
   const [error, setError] = useState<ErrorState | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
@@ -132,18 +135,24 @@ export function ChatBox({ lang }: ChatBoxProps) {
         if (!active) return;
         setConfig(cfg);
         setPersona(cfg.persona || "dima");
-        setSmartEnabled(cfg.llmAvailable);
+        // Don't override user's localStorage preference
+        // Only disable if LLM is not available and user had it enabled
+        if (!cfg.llmAvailable && smartLLM) {
+          setSmartLLM(false);
+        }
       })
       .catch(() => {
         if (!active) return;
         setConfig(fallbackConfig);
-        setSmartEnabled(false);
+        if (smartLLM) {
+          setSmartLLM(false);
+        }
       });
     return () => {
       active = false;
       controller.abort();
     };
-  }, []);
+  }, [smartLLM, setSmartLLM]);
 
   useEffect(() => {
     const tg = getTelegramWebApp();
@@ -173,10 +182,10 @@ export function ChatBox({ lang }: ChatBoxProps) {
   }, []);
 
   useEffect(() => {
-    if (!config.llmAvailable && smartEnabled) {
-      setSmartEnabled(false);
+    if (!config.llmAvailable && smartLLM) {
+      setSmartLLM(false);
     }
-  }, [config, smartEnabled]);
+  }, [config, smartLLM, setSmartLLM]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -225,35 +234,78 @@ export function ChatBox({ lang }: ChatBoxProps) {
     setText("");
     setSending(true);
 
-    const historyForRequest = [...msgs.filter((msg) => !msg.isError), userMsg];
-    const requestMessages: ChatMessageDto[] = historyForRequest.map((msg) => ({
-      role: msg.role,
-      content: msg.text,
-    }));
-
-    const payload: ChatAskPayload = {
-      messages: requestMessages,
-      lang,
-      top_k: 5,
-      use_llm: smartEnabled && config.llmAvailable,
-    };
-
     try {
-      const reply = await postChat(payload);
-      if (reply.persona) {
-        setPersona(reply.persona);
+      let assistantMsg: Msg;
+      
+      if (smartLLM && config.llmAvailable) {
+        // Try /api/chat/ask_grok first, fallback to /api/skills/ask
+        try {
+          const grokReply = await askGrok({
+            session_id: sessionId,
+            q: trimmed,
+            lang,
+          });
+          assistantMsg = {
+            id: `${messageId}-assistant`,
+            role: "assistant",
+            text: grokReply.answer?.trim() || (lang === "en" ? "No answer yet." : "Ответ пока недоступен."),
+            usedLLM: true,
+            sources: grokReply.used_skills,
+          };
+        } catch (grokErr) {
+          // Fallback to /api/skills/ask if ask_grok fails
+          if (grokErr instanceof ChatRequestError && (grokErr.status === 401 || grokErr.status === 404 || grokErr.status === 502 || grokErr.status === 503)) {
+            try {
+              const skillsReply = await askSkills({
+                q: trimmed,
+                lang,
+              });
+              assistantMsg = {
+                id: `${messageId}-assistant`,
+                role: "assistant",
+                text: skillsReply.answer?.trim() || (lang === "en" ? "No answer yet." : "Ответ пока недоступен."),
+                usedLLM: true,
+                sources: skillsReply.used_skills,
+              };
+            } catch (skillsErr) {
+              throw skillsErr;
+            }
+          } else {
+            throw grokErr;
+          }
+        }
+      } else {
+        // Use regular /api/ask flow
+        const historyForRequest = [...msgs.filter((msg) => !msg.isError), userMsg];
+        const requestMessages: ChatMessageDto[] = historyForRequest.map((msg) => ({
+          role: msg.role,
+          content: msg.text,
+        }));
+
+        const payload: ChatAskPayload = {
+          messages: requestMessages,
+          lang,
+          top_k: 5,
+          use_llm: false,
+        };
+
+        const reply = await postChat(payload);
+        if (reply.persona) {
+          setPersona(reply.persona);
+        }
+        assistantMsg = {
+          id: `${messageId}-assistant`,
+          role: "assistant",
+          text: reply.answer?.trim().length
+            ? reply.answer
+            : lang === "en"
+              ? "No answer yet."
+              : "Ответ пока недоступен.",
+          usedLLM: reply.used_llm,
+          sources: reply.sources,
+        };
       }
-      const assistantMsg: Msg = {
-        id: `${messageId}-assistant`,
-        role: "assistant",
-        text: reply.answer?.trim().length
-          ? reply.answer
-          : lang === "en"
-            ? "No answer yet."
-            : "Ответ пока недоступен.",
-        usedLLM: reply.used_llm,
-        sources: reply.sources,
-      };
+      
       setMsgs((previous) => [...previous, assistantMsg]);
     } catch (err) {
       const fallback = lang === "en"
@@ -267,6 +319,22 @@ export function ChatBox({ lang }: ChatBoxProps) {
         if (err.responseSnippet) {
           detail = err.responseSnippet;
         }
+        
+        // User-friendly error messages
+        if (status === 401) {
+          message = lang === "en" 
+            ? "LLM service is not configured. Please contact support."
+            : "Сервис LLM не настроен. Обратитесь в поддержку.";
+        } else if (status === 502 || status === 503) {
+          message = lang === "en"
+            ? "LLM service is temporarily unavailable. Please try again later."
+            : "Сервис LLM временно недоступен. Попробуйте позже.";
+        } else if (status === 404) {
+          message = lang === "en"
+            ? "Session not found. Please refresh the page."
+            : "Сессия не найдена. Обновите страницу.";
+        }
+        
         if (import.meta.env.DEV) {
           const parts = [
             status ? `status ${status}` : "network error",
@@ -274,14 +342,14 @@ export function ChatBox({ lang }: ChatBoxProps) {
             detail ? `body ${detail}` : "",
           ].filter(Boolean);
           message = `${fallback} — dev: ${parts.join(" | ")}`.trim();
-        } else if (status && status >= 400 && status < 600 && detail) {
+        } else if (status && status >= 400 && status < 600 && detail && !message.includes("LLM")) {
           message = `${fallback} (${status})`;
         }
       }
       setError({ message, detail, status });
       setMsgs((previous) => [
         ...previous,
-        { id: `${messageId}-error`, role: "assistant", text: fallback, isError: true },
+        { id: `${messageId}-error`, role: "assistant", text: message, isError: true },
       ]);
     } finally {
       setSending(false);
@@ -354,27 +422,22 @@ export function ChatBox({ lang }: ChatBoxProps) {
     <div className="grid gap-3">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">
-          {lang === "en" ? "Smart answer (LLM)" : "Умный ответ (LLM)"}
+          {t("chat.smartLLM")}
         </span>
         <label className="inline-flex items-center gap-2 text-sm text-gray-600">
           <input
             type="checkbox"
-            checked={smartEnabled && !smartToggleDisabled}
-            onChange={(e) => setSmartEnabled(e.target.checked)}
+            checked={smartLLM && !smartToggleDisabled}
+            onChange={(e) => setSmartLLM(e.target.checked)}
             disabled={smartToggleDisabled}
+            aria-label={t("chat.smartLLM")}
           />
           <span>
             {smartToggleDisabled
-              ? lang === "en"
-                ? "Unavailable"
-                : "Недоступно"
-              : smartEnabled
-                ? lang === "en"
-                  ? "On"
-                  : "Вкл"
-                : lang === "en"
-                  ? "Off"
-                  : "Выкл"}
+              ? t("chat.smartLLMUnavailable")
+              : smartLLM
+                ? t("chat.smartLLMOn")
+                : t("chat.smartLLMOff")}
           </span>
         </label>
       </div>
@@ -399,13 +462,7 @@ export function ChatBox({ lang }: ChatBoxProps) {
                 <div className="flex flex-col gap-1">
                   {m.usedLLM !== undefined && (
                     <span className="text-xs uppercase tracking-wide text-gray-400">
-                      {m.usedLLM
-                        ? lang === "en"
-                          ? "Mode: LLM"
-                          : "Режим: LLM"
-                        : lang === "en"
-                          ? "Mode: Skills"
-                          : "Режим: Навыки"}
+                      {m.usedLLM ? t("chat.modeLLM") : t("chat.modeSkills")}
                     </span>
                   )}
                   {m.sources && m.sources.length > 0 && (

@@ -90,6 +90,21 @@ export type SkillsAskResponse = {
   tokens_estimate: number;
 };
 
+export type AskGrokRequest = {
+  session_id: string;
+  q: string;
+  lang?: "ru" | "en";
+  selected?: string[];
+};
+
+export type AskGrokResponse = {
+  answer: string;
+  used_skills: string[];
+  model: string;
+  tokens_estimate: number;
+  from_fatcontext?: boolean;
+};
+
 export async function askSkills(payload: SkillsAskRequest, signal?: AbortSignal): Promise<SkillsAskResponse> {
   const r = await apiFetch("/skills/ask", {
     method: "POST",
@@ -108,6 +123,28 @@ export async function askSkills(payload: SkillsAskRequest, signal?: AbortSignal)
     used_skills: ensureStringArray(data?.used_skills),
     model: typeof data?.model === "string" ? data.model : "unknown",
     tokens_estimate: typeof data?.tokens_estimate === "number" ? data.tokens_estimate : 0,
+  };
+}
+
+export async function askGrok(payload: AskGrokRequest, signal?: AbortSignal): Promise<AskGrokResponse> {
+  const r = await apiFetch("/chat/ask_grok", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    const snippet = text.length > 200 ? `${text.slice(0, 200)}…` : text;
+    throw new ChatRequestError(r.status, `${getApiBaseUrl()}/chat/ask_grok`, snippet.trim());
+  }
+  const data = await r.json();
+  return {
+    answer: typeof data?.answer === "string" ? data.answer : "",
+    used_skills: ensureStringArray(data?.used_skills),
+    model: typeof data?.model === "string" ? data.model : "unknown",
+    tokens_estimate: typeof data?.tokens_estimate === "number" ? data.tokens_estimate : 0,
+    from_fatcontext: Boolean(data?.from_fatcontext),
   };
 }
 

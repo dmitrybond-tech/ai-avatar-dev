@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { askSkills, getSkillDetail, getSkills } from '../api/client'
+import { getSkillDetail, getSkills } from '../api/client'
 import { SkillDetailView } from '../components/SkillDetail'
 import type { SkillCard, SkillDetail } from '../types'
 
@@ -28,11 +28,6 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailReloadToken, setDetailReloadToken] = useState(0)
-  const [smartLLM, setSmartLLM] = useState(false)
-  const [askQuery, setAskQuery] = useState('')
-  const [askLoading, setAskLoading] = useState(false)
-  const [askError, setAskError] = useState<string | null>(null)
-  const [askAnswer, setAskAnswer] = useState<string | null>(null)
   const dialogRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -168,29 +163,6 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
     setDetailReloadToken((token) => token + 1)
   }, [selectedSlug])
 
-  const handleAskGrok = useCallback(async () => {
-    if (!askQuery.trim() || !selectedSlug || askLoading) return
-    setAskLoading(true)
-    setAskError(null)
-    setAskAnswer(null)
-    try {
-      const response = await askSkills(
-        {
-          q: askQuery.trim(),
-          lang,
-          selected: [selectedSlug],
-        },
-        undefined,
-      )
-      setAskAnswer(response.answer)
-      setAskQuery('')
-    } catch (err) {
-      setAskError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setAskLoading(false)
-    }
-  }, [askQuery, selectedSlug, lang, askLoading])
-
   const listContent = useMemo(() => {
     if (error) {
       return (
@@ -273,17 +245,6 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
           </button>
           <h1 className="text-lg font-semibold text-black">{titles[lang]}</h1>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={smartLLM}
-            onChange={(e) => setSmartLLM(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <span className="text-gray-700">
-            {lang === 'ru' ? 'Smart LLM (Grok)' : 'Smart LLM (Grok)'}
-          </span>
-        </label>
       </header>
 
       {listContent}
@@ -336,47 +297,6 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
             ) : activeDetail ? (
               <div className="space-y-4">
                 <SkillDetailView skill={activeDetail} lang={lang} />
-                {smartLLM && (
-                  <div className="mt-4 space-y-3 border-t border-gray-200 pt-4">
-                    <h3 className="text-sm font-semibold text-gray-700">
-                      {lang === 'ru' ? 'Спросить Grok об этом навыке' : 'Ask Grok about this skill'}
-                    </h3>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={askQuery}
-                        onChange={(e) => setAskQuery(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault()
-                            handleAskGrok()
-                          }
-                        }}
-                        placeholder={lang === 'ru' ? 'Ваш вопрос...' : 'Your question...'}
-                        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={askLoading}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAskGrok}
-                        disabled={!askQuery.trim() || askLoading}
-                        className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {askLoading ? (lang === 'ru' ? '...' : '...') : lang === 'ru' ? 'Спросить' : 'Ask'}
-                      </button>
-                    </div>
-                    {askError && (
-                      <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-                        {askError}
-                      </div>
-                    )}
-                    {askAnswer && (
-                      <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
-                        <p className="whitespace-pre-wrap">{askAnswer}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             ) : (
               <div className="text-sm text-gray-500">
