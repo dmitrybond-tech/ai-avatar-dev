@@ -200,7 +200,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
     if (status === "success" && skills.length === 0) {
       return (
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
-          {lang === 'ru' ? 'Пока нет навыков для отображения.' : 'No skills are published yet.'}
+          {lang === 'ru' ? 'Пока нет навыков для отображения.' : 'No skills available yet.'}
         </div>
       )
     }

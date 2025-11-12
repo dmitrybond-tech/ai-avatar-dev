@@ -54,14 +54,19 @@ def _project_detail(skill: SkillRecord, lang: str) -> Dict[str, Any]:
 
 
 def _load_skills_with_fallback() -> List[SkillRecord]:
-    """Load skills from CSV with fallback to hardcoded skills if CSV fails."""
+    """Load skills from CSV with fallback to hardcoded skills if CSV fails.
+    When SKILLS_SOURCE=csv, NEVER calls Notion - only CSV or fallback."""
     source = os.getenv("SKILLS_SOURCE", "auto").strip().lower()
     if source == "csv":
-        skills = get_loader().load_skills()
-        if not skills:
-            logger.warning("CSV loader returned 0 skills, using fallback")
+        try:
+            skills = get_loader().load_skills()
+            if not skills or len(skills) == 0:
+                logger.warning("CSV loader returned 0 skills, using fallback")
+                return get_fallback_skills()
+            return skills
+        except Exception as exc:
+            logger.error("CSV loader failed, using fallback: %s", exc, exc_info=True)
             return get_fallback_skills()
-        return skills
     # For non-CSV mode, use repository (which may use Notion or CSV)
     return []
 
@@ -69,13 +74,21 @@ def _load_skills_with_fallback() -> List[SkillRecord]:
 def _list_skills_impl(request: Request, lang: Optional[str]) -> List[Dict[str, Any]]:
     source = os.getenv("SKILLS_SOURCE", "auto").strip().lower()
     if source == "csv":
+        # CSV mode: never call Notion, always use CSV loader with fallback
         skills = _load_skills_with_fallback()
     else:
+        # Non-CSV mode: use repository (may use Notion or CSV)
         repo = _repo(request)
         snapshot = repo.snapshot()
         skills = snapshot.skills
+    # Ensure we never return empty list - fallback should have been applied in CSV mode
     if not skills:
-        return []
+        logger.warning("_list_skills_impl: skills list is empty after loading")
+        if source == "csv":
+            # Last resort fallback
+            skills = get_fallback_skills()
+        else:
+            return []
     lang_key = _lang_key(lang)
     if lang:
         return [_project_card(skill, lang_key) for skill in skills]
@@ -103,9 +116,11 @@ def _get_skill_impl(
 ) -> Dict[str, Any]:
     source = os.getenv("SKILLS_SOURCE", "auto").strip().lower()
     if source == "csv":
+        # CSV mode: never call Notion, always use CSV loader with fallback
         skills = _load_skills_with_fallback()
         skill = next((s for s in skills if s.key == slug), None)
     else:
+        # Non-CSV mode: use repository (may use Notion or CSV)
         repo = _repo(request)
         snapshot = repo.snapshot()
         skill = next((item for item in snapshot.skills if item.key == slug), None)
@@ -171,7 +186,8 @@ def list_skills_api(
 
 @api_router.get("/skills/debug")
 def debug_skills(request: Request) -> Dict[str, Any]:
-    """Minimal diagnostics for skills provider without leaking secrets."""
+    """Detailed diagnostics for skills provider without leaking secrets.
+    When SKILLS_SOURCE=csv, ensures no Notion calls are made."""
     source = os.getenv("SKILLS_SOURCE", "auto").strip().lower()
     csv_path_env = os.getenv("SKILLS_CSV_PATH")
     if csv_path_env:
@@ -181,8 +197,10 @@ def debug_skills(request: Request) -> Dict[str, Any]:
     
     errors: List[str] = []
     csv_ok = False
+    csv_exists = csv_path.exists()
     
     if source == "csv":
+        # CSV mode: NEVER call Notion
         # Try to load CSV directly to check if it works
         try:
             loader = get_loader()
@@ -209,12 +227,13 @@ def debug_skills(request: Request) -> Dict[str, Any]:
             "source": actual_source,
             "count": len(skills),
             "csv_path": str(csv_path),
-            "csv_exists": csv_path.exists(),
+            "csv_exists": csv_exists,
             "csv_ok": csv_ok,
             "errors": errors if errors else None,
             "sample": sample,
         }
     else:
+        # Non-CSV mode: may use Notion
         repo = _repo(request)
         snap = repo.snapshot()
         notion_token = os.getenv("NOTION_API_KEY") or os.getenv("NOTION_SECRET")
@@ -237,7 +256,7 @@ def debug_skills(request: Request) -> Dict[str, Any]:
             "source": getattr(snap, "source", None) or "unknown",
             "count": len(getattr(snap, "skills", []) or []),
             "csv_path": str(csv_path),
-            "csv_exists": csv_path.exists(),
+            "csv_exists": csv_exists,
             "csv_ok": csv_ok,
             "errors": errors if errors else None,
             "notion": {
@@ -267,12 +286,14 @@ def search_skills_api(
 ) -> List[Dict[str, Any]]:
     source = os.getenv("SKILLS_SOURCE", "auto").strip().lower()
     if source == "csv":
+        # CSV mode: never call Notion, always use CSV loader with fallback
         skills = _load_skills_with_fallback()
         # Simple search using loader
         from ..services.skills_loader import get_loader
         lang_key = _lang_key(lang) if lang else "en"
         top_skills = get_loader().search_skills(q, lang=lang_key, top_k=limit)
     else:
+        # Non-CSV mode: use repository (may use Notion or CSV)
         repo = _repo(request)
         lang_key = _lang_key(lang) if lang else "en"
         top_skills = repo.relevant_skills(q, top_k=limit)
@@ -320,8 +341,10 @@ def ask_skills(request: Request, body: AskRequest) -> AskResponse:
 
     # Load skills using the loader with fallback
     if source == "csv":
+        # CSV mode: never call Notion, always use CSV loader with fallback
         skills = _load_skills_with_fallback()
     else:
+        # Non-CSV mode: try loader first, then fallback
         loader = get_loader()
         skills = loader.load_skills()
         if not skills:
@@ -344,16 +367,20 @@ def ask_skills(request: Request, body: AskRequest) -> AskResponse:
         if not selected_skills:
             # Fallback to search if selected not found
             if source == "csv":
+                # CSV mode: never call Notion
                 from ..services.skills_loader import get_loader
                 selected_skills = get_loader().search_skills(query, lang=lang_key, top_k=5)
             else:
+                # Non-CSV mode: use repository (may use Notion)
                 repo = _repo(request)
                 selected_skills = repo.relevant_skills(query, top_k=5)
     else:
         if source == "csv":
+            # CSV mode: never call Notion
             from ..services.skills_loader import get_loader
             selected_skills = get_loader().search_skills(query, lang=lang_key, top_k=5)
         else:
+            # Non-CSV mode: use repository (may use Notion)
             repo = _repo(request)
             selected_skills = repo.relevant_skills(query, top_k=5)
 

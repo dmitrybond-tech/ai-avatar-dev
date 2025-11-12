@@ -19,16 +19,16 @@ logger = logging.getLogger(__name__)
 # CSV header aliases for tolerant ingestion
 # Supports exact headers: Title EN, Bullets EN, Bullets RU, Examples EN, Examples RU, Short EN, Short RU, Slug, Tags, Title RU
 CSV_ALIASES = {
-    "key": ["key", "slug", "id", "slug", "Slug"],
-    "title_en": ["title_en", "name_en", "en_title", "en_name", "title", "title en", "Title EN", "Title"],
-    "title_ru": ["title_ru", "name_ru", "ru_title", "ru_name", "title ru", "Title RU"],
-    "short_en": ["short_en", "summary_en", "en_short", "en_summary", "short en", "Short EN"],
-    "short_ru": ["short_ru", "summary_ru", "ru_short", "ru_summary", "short ru", "Short RU"],
-    "tags": ["tags", "labels", "categories", "Tags"],
-    "bullets_en": ["bullets_en", "points_en", "en_bullets", "bullets en", "Bullets EN"],
-    "bullets_ru": ["bullets_ru", "points_ru", "ru_bullets", "bullets ru", "Bullets RU"],
-    "examples_en": ["examples_en", "cases_en", "en_examples", "example_en", "examples en", "Examples EN"],
-    "examples_ru": ["examples_ru", "cases_ru", "ru_examples", "example_ru", "examples ru", "Examples RU"],
+    "key": ["slug", "key", "id"],
+    "title_en": ["title en", "title_en", "name_en", "en_title", "en_name", "title"],
+    "title_ru": ["title ru", "title_ru", "name_ru", "ru_title", "ru_name"],
+    "short_en": ["short en", "short_en", "summary_en", "en_short", "en_summary"],
+    "short_ru": ["short ru", "short_ru", "summary_ru", "ru_short", "ru_summary"],
+    "tags": ["tags", "labels", "categories"],
+    "bullets_en": ["bullets en", "bullets_en", "points_en", "en_bullets"],
+    "bullets_ru": ["bullets ru", "bullets_ru", "points_ru", "ru_bullets"],
+    "examples_en": ["examples en", "examples_en", "cases_en", "en_examples", "example_en"],
+    "examples_ru": ["examples ru", "examples_ru", "cases_ru", "ru_examples", "example_ru"],
     "weight": ["weight", "order", "prio", "rank"],
     "pinned": ["pinned", "pin", "featured"],
 }
@@ -245,11 +245,13 @@ class SkillsLoader:
                 # Convert all values to strings, handling NaN and None
                 row_str = {}
                 for k, v in row.items():
-                    key_lower = str(k).lower()
+                    key_lower = str(k).lower().strip()
+                    # Handle NaN/None/empty: convert to empty string
                     if pd.isna(v) or v is None:
                         row_str[key_lower] = ""
                     else:
-                        row_str[key_lower] = str(v)
+                        # Convert to string and strip
+                        row_str[key_lower] = str(v).strip()
 
                 key = _h(row_str, "key") or f"skill_{i}"
                 title_en = _h(row_str, "title_en") or key
@@ -264,7 +266,9 @@ class SkillsLoader:
                 weight = _to_int(_h(row_str, "weight"), 0)
                 pinned = _to_bool(_h(row_str, "pinned"))
 
+                # Skip rows without at least one title
                 if not (title_en or title_ru):
+                    logger.debug("Skipping row %d: no title_en or title_ru", i)
                     continue
 
                 items.append(
