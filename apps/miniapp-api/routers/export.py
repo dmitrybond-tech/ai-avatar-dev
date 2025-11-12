@@ -49,16 +49,36 @@ def _redact_dict(obj: Any, enabled: bool = True) -> Any:
     return obj
 
 
-def resolve_tg_env() -> tuple[str, str]:
-    """Resolve Telegram token and chat ID from environment variables."""
+def resolve_tg_env() -> tuple[str, List[str]]:
+    """Resolve Telegram token and chat IDs from environment variables.
+    
+    Supports multiple recipients via comma-separated values in:
+    - TELEGRAM_ADMIN_CHAT_ID or ADMIN_CHAT_ID
+    - TELEGRAM_ADMIN_CHANNEL_ID
+    
+    Returns: (token, list of chat_ids/usernames)
+    """
     token = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
-    chat_id = os.getenv("TELEGRAM_ADMIN_CHAT_ID") or os.getenv("ADMIN_CHAT_ID")
-    if not token or not chat_id:
+    raw_chat_ids = ",".join(filter(None, [
+        os.getenv("TELEGRAM_ADMIN_CHAT_ID") or os.getenv("ADMIN_CHAT_ID"),
+        os.getenv("TELEGRAM_ADMIN_CHANNEL_ID"),
+    ]))
+    
+    if not token or not raw_chat_ids:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="telegram_env_missing",
         )
-    return token, chat_id
+    
+    # Support comma-separated ids/usernames
+    targets = [x.strip() for x in raw_chat_ids.split(",") if x.strip()]
+    if not targets:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="telegram_env_missing",
+        )
+    
+    return token, targets
 
 
 class ExportTelegramRequest(BaseModel):
@@ -69,10 +89,16 @@ class ExportTelegramRequest(BaseModel):
     meta: Optional[Dict[str, Any]] = Field(default=None, description="Metadata")
 
 
+class SentInfo(BaseModel):
+    """Information about a successful send."""
+    chat_id: str = Field(..., description="Chat ID or username")
+    method: str = Field(..., description="sendDocument or sendMessage")
+
+
 class ExportTelegramResponse(BaseModel):
     """Response model for Telegram export."""
     ok: bool
-    method: str = Field(..., description="sendDocument or sendMessage")
+    sent: List[SentInfo] = Field(..., description="List of successful sends")
     bytes: int = Field(..., description="Size of exported data in bytes")
 
 
@@ -91,11 +117,12 @@ async def export_to_telegram(request: Request, payload: ExportTelegramRequest) -
     """
     Export chat messages to Telegram as JSON document.
     
-    Tries sendDocument first, falls back to sendMessage if document fails.
+    Tries sendDocument first (up to ~50MB), falls back to sendMessage (chunked/truncated) if document fails.
+    Supports multiple recipients via comma-separated chat IDs in env vars.
     """
     # Resolve Telegram credentials
     try:
-        token, chat_id = resolve_tg_env()
+        token, chat_ids = resolve_tg_env()
     except HTTPException:
         raise
     
@@ -111,27 +138,42 @@ async def export_to_telegram(request: Request, payload: ExportTelegramRequest) -
         content = str(msg.get("content", "")).strip()
         if not content:
             continue
-        # Cap content length
-        if len(content) > 4000:
-            content = content[:4000] + "...[truncated]"
+        # Cap content length per message
+        if len(content) > 10000:
+            content = content[:10000] + "...[truncated]"
+        # Handle ts: accept ISO string or int timestamp
+        ts_value = msg.get("ts")
+        if isinstance(ts_value, str):
+            try:
+                # Try parsing ISO string
+                ts_dt = datetime.fromisoformat(ts_value.replace("Z", "+00:00"))
+                ts_int = int(ts_dt.timestamp())
+            except (ValueError, AttributeError):
+                ts_int = int(datetime.now(timezone.utc).timestamp())
+        elif isinstance(ts_value, (int, float)):
+            ts_int = int(ts_value)
+        else:
+            ts_int = int(datetime.now(timezone.utc).timestamp())
+        
         sanitized_messages.append({
             "role": role,
             "content": content,
-            "ts": msg.get("ts", datetime.now(timezone.utc).isoformat()),
+            "ts": ts_int,
         })
     
     if not sanitized_messages:
+        logger.error("export_telegram.error: empty_messages session=%s", payload.session_id)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="no_valid_messages",
+            detail="empty_messages",
         )
     
     # Build export JSON
     export_data: Dict[str, Any] = {
+        "export_ts": int(datetime.now(timezone.utc).timestamp()),
         "session_id": payload.session_id,
         "persona": payload.persona,
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "message_count": len(sanitized_messages),
+        "count": len(sanitized_messages),
         "messages": sanitized_messages,
     }
     
@@ -139,78 +181,96 @@ async def export_to_telegram(request: Request, payload: ExportTelegramRequest) -
         export_data["meta"] = payload.meta
     
     # Apply redaction if enabled
-    redact_enabled = os.getenv("REDACT_EXPORT", "true").strip().lower() in {"1", "true", "yes"}
+    redact_enabled = os.getenv("REDACT_EXPORT", "false").strip().lower() in {"1", "true", "yes"}
     if redact_enabled:
         export_data = _redact_dict(export_data, enabled=True)
     
     # Serialize to JSON
-    json_bytes = json.dumps(export_data, ensure_ascii=False, indent=2).encode("utf-8")
+    json_bytes = json.dumps(export_data, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
     json_size = len(json_bytes)
     
-    # Try sendDocument first
     import httpx
     
-    filename = f"chat-export-{payload.session_id}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.json"
-    caption = f"Chat export: {payload.persona} ({len(sanitized_messages)} messages)"
+    filename = f"chat-export-{payload.session_id}-{int(datetime.now(timezone.utc).timestamp())}.json"
+    caption = f"Chat export • session={payload.session_id} • count={len(sanitized_messages)}"
     if len(caption) > 1024:
         caption = caption[:1020] + "..."
     
-    tg_url = f"https://api.telegram.org/bot{token}/sendDocument"
+    sent: List[SentInfo] = []
+    last_error: Optional[Dict[str, Any]] = None
     
-    try:
-        # Try sendDocument
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            files = {
-                "document": (filename, json_bytes, "application/json; charset=utf-8"),
-            }
-            data = {
-                "chat_id": chat_id,
-                "caption": caption,
-            }
-            response = await client.post(tg_url, data=data, files=files)
-            response.raise_for_status()
-            result = response.json()
-            if result.get("ok"):
-                logger.info("Exported chat to Telegram via sendDocument: session=%s, size=%d", payload.session_id, json_size)
-                return ExportTelegramResponse(ok=True, method="sendDocument", bytes=json_size)
-    except Exception as exc:
-        logger.warning("sendDocument failed, falling back to sendMessage: %s", exc)
-        # Fallback to sendMessage
+    # Try to send to each recipient
+    for chat_id in chat_ids:
         try:
-            # Truncate JSON if too long
-            json_text = json_bytes.decode("utf-8")
-            max_chars = 3500  # Leave room for markdown formatting
-            if len(json_text) > max_chars:
-                json_text = json_text[:max_chars] + "\n...[truncated]"
-            
-            message_text = f"```json\n{json_text}\n```"
-            
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                payload_data = {
-                    "chat_id": chat_id,
-                    "text": message_text,
-                    "parse_mode": "Markdown",
+            # Try sendDocument first (up to ~50MB)
+            tg_url_doc = f"https://api.telegram.org/bot{token}/sendDocument"
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                files = {
+                    "document": (filename, json_bytes, "application/json"),
                 }
-                response = await client.post(
-                    f"https://api.telegram.org/bot{token}/sendMessage",
-                    json=payload_data,
-                )
-                response.raise_for_status()
-                result = response.json()
-                if result.get("ok"):
-                    logger.info("Exported chat to Telegram via sendMessage: session=%s, size=%d", payload.session_id, json_size)
-                    return ExportTelegramResponse(ok=True, method="sendMessage", bytes=json_size)
-        except Exception as send_msg_exc:
-            logger.error("Both sendDocument and sendMessage failed: %s", send_msg_exc)
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"telegram_send_failed: {str(send_msg_exc)}",
-            )
+                data = {
+                    "chat_id": chat_id,
+                    "caption": caption,
+                }
+                response = await client.post(tg_url_doc, data=data, files=files)
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get("ok"):
+                        sent.append(SentInfo(chat_id=chat_id, method="document"))
+                        logger.info("export_telegram.ok: session=%s chat_id=%s method=document size=%d", 
+                                   payload.session_id, chat_id, json_size)
+                        continue
+                
+                # Fallback to sendMessage (chunked/truncated)
+                json_text = json_bytes.decode("utf-8")
+                max_chars = 3800  # Leave room for markdown formatting
+                if len(json_text) > max_chars:
+                    json_text = json_text[:max_chars] + "\n...[truncated]"
+                
+                message_text = f"```json\n{json_text}\n```"
+                
+                tg_url_msg = f"https://api.telegram.org/bot{token}/sendMessage"
+                async with httpx.AsyncClient(timeout=20.0) as client:
+                    payload_data = {
+                        "chat_id": chat_id,
+                        "text": message_text[:4096],  # Telegram limit
+                        "parse_mode": "Markdown",
+                    }
+                    response = await client.post(tg_url_msg, json=payload_data)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        if result.get("ok"):
+                            sent.append(SentInfo(chat_id=chat_id, method="message"))
+                            logger.info("export_telegram.ok: session=%s chat_id=%s method=message size=%d", 
+                                       payload.session_id, chat_id, json_size)
+                            continue
+                
+                # Both methods failed for this chat_id
+                error_text = response.text[:200] if response.text else ""
+                last_error = {"chat_id": chat_id, "status": response.status_code, "text": error_text}
+                logger.warning("export_telegram.error: session=%s chat_id=%s status=%d", 
+                             payload.session_id, chat_id, response.status_code)
+                
+        except Exception as exc:
+            last_error = {"chat_id": chat_id, "exc": str(exc)}
+            logger.error("export_telegram.error: session=%s chat_id=%s error=%s", 
+                        payload.session_id, chat_id, str(exc), exc_info=True)
     
-    raise HTTPException(
-        status_code=status.HTTP_502_BAD_GATEWAY,
-        detail="telegram_send_failed",
-    )
+    # If nothing was sent, raise error
+    if not sent:
+        logger.error("export_telegram.error: telegram_send_failed session=%s last_error=%s", 
+                    payload.session_id, last_error)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"telegram_send_failed": True, "last_error": last_error},
+        )
+    
+    logger.info("export_telegram.ok: session=%s sent=%d recipients size=%d", 
+               payload.session_id, len(sent), json_size)
+    
+    return ExportTelegramResponse(ok=True, sent=sent, bytes=json_size)
 
 
 @router.post("/chat/clear", response_model=ClearChatResponse)
