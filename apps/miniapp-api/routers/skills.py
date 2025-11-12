@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -170,5 +172,34 @@ def search_skills_api(
         }
         for skill in top_skills
     ]
+
+
+@api_router.get("/skills/debug")
+def debug_skills(request: Request) -> Dict[str, Any]:
+    """Minimal diagnostics for skills provider without leaking secrets."""
+    repo = _repo(request)
+    snap = repo.snapshot()
+    csv_path_env = os.getenv("SKILLS_CSV_PATH")
+    if csv_path_env:
+        csv_path = Path(csv_path_env)
+    else:
+        csv_path = getattr(repo, "_csv_path", Path("/app/data/skills.csv"))
+    notion_token = os.getenv("NOTION_API_KEY") or os.getenv("NOTION_SECRET")
+    notion_db = os.getenv("NOTION_DB_SKILLS") or os.getenv("NOTION_DB")
+    sample = []
+    for s in (snap.skills[:2] if getattr(snap, "skills", None) else []):
+        sample.append({"slug": getattr(s, "key", ""), "title_en": s.title_en[:60], "title_ru": s.title_ru[:60]})
+    return {
+        "provider": getattr(snap, "source", None) or "unknown",
+        "csv_path": str(csv_path),
+        "csv_exists": csv_path.exists(),
+        "notion": {
+            "token": "SET" if notion_token else "EMPTY",
+            "db": "SET" if notion_db else "EMPTY",
+            "ok": bool(getattr(snap, "notion", False)),
+        },
+        "count": len(getattr(snap, "skills", []) or []),
+        "sample": sample,
+    }
 
 

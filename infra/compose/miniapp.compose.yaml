@@ -23,6 +23,10 @@ services:
       UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://miniapp.dmitrybond.tech}
       TELEGRAM_SEND_REQUIRED: ${TELEGRAM_SEND_REQUIRED:-false}
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-${TELEGRAM_TOKEN:-}}
+      ADMIN_CHAT_ID: ${ADMIN_CHAT_ID:-}
+      TELEGRAM_ADMIN_CHAT_ID: ${TELEGRAM_ADMIN_CHAT_ID:-${ADMIN_CHAT_ID:-}}
     expose:
       - "8000"
     volumes:

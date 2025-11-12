@@ -36,6 +36,7 @@ class AskResponse(BaseModel):
 
 class ExportRequest(BaseModel):
     messages: List[ChatMessage] = Field(default_factory=list)
+    items: Optional[List[ChatMessage]] = Field(default=None)
     title: Optional[str] = None
     meta: Optional[Dict[str, Any]] = None
 

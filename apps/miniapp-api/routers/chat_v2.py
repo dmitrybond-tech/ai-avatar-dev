@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import traceback
 import time
 from typing import Any, Dict, List
 
@@ -162,7 +163,11 @@ async def export_telegram(
             detail="TELEGRAM_TOKEN or ADMIN_CHAT_ID is not set",
         )
 
+    # Tolerate both shapes: {items:[...]} or {messages:[...]}
+    if not body.messages and body.items:
+        body.messages = body.items  # type: ignore[assignment]
     payload_messages = body.messages or []
+
     meta = body.meta or {}
     meta.update(
         {
@@ -186,10 +191,11 @@ async def export_telegram(
         ) from exc
     except Exception as exc:
         # Network errors, API errors, etc.
-        logger.warning("Telegram export failed: %s", exc)
+        detail = f"{type(exc).__name__}: {exc}"
+        logger.error("Telegram export failed: %s\n%s", detail, traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Telegram request failed: {exc}",
+            detail=f"Telegram request failed: {detail}",
         ) from exc
     return result
 
