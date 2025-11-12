@@ -4,7 +4,7 @@ import type { ChatAskPayload, ChatConfig, ChatExportPayload, ChatMessageDto } fr
 import type { Locale } from "../shared/i18n/resolveLocale";
 import { useChatSessionId } from "../hooks/useChatSessionId";
 import { getTelegramWebApp, isTelegramWebView } from "../lib/tg";
-import { apiUrl } from "../lib/api";
+import { apiUrl } from "../shared/api";
 import { streamReply } from "../lib/sse";
 
 type Msg = {
@@ -493,7 +493,7 @@ export default function Chat() {
     if (!message) return;
     setText("");
     setTurns((t) => [...t, { role: "user", content: message }]);
-    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/chat`, {
+    const res = await fetch(apiUrl("/chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ lang: "ru", history: turns, message }),

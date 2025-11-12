@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 import yaml
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query, Request
+from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -88,6 +88,9 @@ async def on_startup() -> None:
         logger.debug("Failed to log notion env snapshot: %s", exc)
 
 
+# Main API router with /api prefix
+api_router = APIRouter(prefix="/api", tags=["api"])
+
 app.include_router(chat_router)
 app.include_router(tasks_router)
 app.include_router(public_tasks_router, prefix="/api")
@@ -123,14 +126,21 @@ async def legacy_openapi() -> Dict[str, Any]:
     return app.openapi()
 
 
-@app.get("/api/cal/link", response_model=CalLinkResponse)
+# --- API endpoints under /api prefix ---
+
+@api_router.get("/healthz")
+async def api_healthz() -> Dict[str, bool]:
+    return {"ok": True}
+
+
+@api_router.get("/cal/link", response_model=CalLinkResponse)
 async def cal_link() -> CalLinkResponse:
     host = os.getenv("CAL_HOST", "cal.com")
     username = os.getenv("CAL_USERNAME", "dmitrybond")
     return CalLinkResponse(url=f"https://{host}/{username}/intro-30m")
 
 
-@app.get("/api/cal/suggest")
+@api_router.get("/cal/suggest")
 async def cal_suggest(event: str = Query(default="intro-30m"), lang: str = Query(default=None)) -> Dict[str, Any]:
     default_lang = os.getenv("DEFAULT_LANG", "ru")
     if lang is None:
@@ -167,7 +177,7 @@ class ChatResponse(BaseModel):
     usage: Dict[str, Any] = {}
 
 
-@app.post("/chat", response_model=ChatResponse)
+@api_router.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest) -> Dict[str, Any]:
     msg = (req.message or "").strip()
     base = "Понял. Давайте начнём. " if req.lang == "ru" else "Got it. Let's start. "
@@ -181,7 +191,7 @@ def _sse_event(event: str, data: Dict[str, Any]) -> str:
     return "event: " + event + "\n" + "data: " + json.dumps(data, ensure_ascii=False) + "\n\n"
 
 
-@app.get("/chat/stream")
+@api_router.get("/chat/stream")
 async def chat_stream(request: Request, text: str, lang: str = "ru"):
     async def gen():
         # start
@@ -197,6 +207,10 @@ async def chat_stream(request: Request, text: str, lang: str = "ru"):
             await asyncio.sleep(0.03)
         yield _sse_event("end", {"ok": True})
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+# Include the API router
+app.include_router(api_router)
 
 
 if __name__ == "__main__":

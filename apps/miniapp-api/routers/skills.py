@@ -147,3 +147,28 @@ def get_skill_api(
     return _get_skill_impl(slug=slug, request=request, lang=lang)
 
 
+@api_router.get("/skills/search")
+def search_skills_api(
+    request: Request,
+    q: str = Query(..., description="Search query"),
+    lang: Optional[str] = Query(default=None, description="ru|en for projected payload"),
+    limit: int = Query(default=10, ge=1, le=50, description="Max number of results"),
+) -> List[Dict[str, Any]]:
+    repo = _repo(request)
+    lang_key = _lang_key(lang) if lang else "en"
+    top_skills = repo.relevant_skills(q, top_k=limit)
+    if lang:
+        return [_project_card(skill, lang_key) for skill in top_skills]
+    return [
+        {
+            "slug": skill.key,
+            "title_en": skill.title("en"),
+            "title_ru": skill.title("ru"),
+            "short_en": skill.summary("en"),
+            "short_ru": skill.summary("ru"),
+            "tags": skill.tags,
+        }
+        for skill in top_skills
+    ]
+
+
