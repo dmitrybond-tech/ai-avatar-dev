@@ -1,25 +1,37 @@
-# Telegram Export Runbook
+# Telegram Export Verification Runbook
 
-## Environment Variables
+## Prerequisites
 
-**Required:**
-- `TELEGRAM_TOKEN` - Telegram bot token (or `TELEGRAM_BOT_TOKEN` for backward compatibility)
-- `ADMIN_CHAT_ID` - Admin chat ID for receiving exports (or `TELEGRAM_ADMIN_CHAT_ID` for backward compatibility)
+- `curl` or PowerShell `Invoke-WebRequest`
+- `jq` (optional, for JSON formatting)
+- Python 3.x with `requests` (for large payload test)
 
-**Optional:**
-- `TELEGRAM_TIMEOUT` - Request timeout in seconds (default: 15.0)
+## Base URL
 
-## Testing
-
-### 1. Selftest (token only)
-
-Test Telegram bot token connectivity:
-
-```powershell
-curl -sS https://miniapp.dmitrybond.tech/api/telegram/selftest | ConvertFrom-Json
+```bash
+BASE="https://miniapp.dmitrybond.tech"
+# Or for local testing:
+# BASE="http://localhost:8000"
 ```
 
-Expected response:
+## Test 1: Telegram Selftest (GET)
+
+### Bash
+
+```bash
+curl -sS "$BASE/api/telegram/selftest" | jq .
+```
+
+### PowerShell
+
+```powershell
+$base = "https://miniapp.dmitrybond.tech"
+Invoke-RestMethod -Uri "$base/api/telegram/selftest" -Method Get | ConvertTo-Json -Depth 10
+```
+
+### Expected Results
+
+**Success (200):**
 ```json
 {
   "ok": true,
@@ -32,25 +44,47 @@ Expected response:
 }
 ```
 
-### 2. Minimal export (token + admin chat required)
+**Missing Env (400):**
+```json
+{
+  "detail": "TELEGRAM_TOKEN is not set"
+}
+```
 
-Test export with a small conversation:
+## Test 2: Small Transcript Export (POST)
+
+### Bash
+
+```bash
+curl -sS -X POST "$BASE/api/export/telegram" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "conv_id": "test-small",
+    "lang": "ru",
+    "messages": [
+      {"role": "user", "content": "Привет"},
+      {"role": "assistant", "content": "Здравствуйте! Чем могу помочь?"}
+    ]
+  }' | jq .
+```
+
+### PowerShell
 
 ```powershell
 $body = @{
-    title = "test"
+    conv_id = "test-small"
+    lang = "ru"
     messages = @(
-        @{ role = "user"; content = "Привет!" }
-        @{ role = "assistant"; content = "Здравствуйте!" }
+        @{role = "user"; content = "Привет"},
+        @{role = "assistant"; content = "Здравствуйте! Чем могу помочь?"}
     )
 } | ConvertTo-Json -Depth 10
 
-curl -sS -X POST https://miniapp.dmitrybond.tech/api/export/telegram `
-  -H "Content-Type: application/json" `
-  -d $body | ConvertFrom-Json
+Invoke-RestMethod -Uri "$base/api/export/telegram" -Method Post -Body $body -ContentType "application/json" | ConvertTo-Json -Depth 10
 ```
 
-Expected response:
+### Expected Result (200)
+
 ```json
 {
   "ok": true,
@@ -61,25 +95,59 @@ Expected response:
 }
 ```
 
-### 3. Large export check (forces sendDocument)
+## Test 3: Large Transcript Export (POST)
 
-For transcripts > 3500 characters, the system automatically uses `sendDocument`:
+### Python Script
+
+```python
+import requests
+import json
+
+base = "https://miniapp.dmitrybond.tech"
+big_content = "line\n" * 3000
+
+payload = {
+    "conv_id": "test-large",
+    "lang": "ru",
+    "messages": [
+        {"role": "user", "content": big_content}
+    ]
+}
+
+response = requests.post(
+    f"{base}/api/export/telegram",
+    json=payload,
+    timeout=60
+)
+
+print(f"Status: {response.status_code}")
+print(f"Response: {json.dumps(response.json(), indent=2)}")
+```
+
+### PowerShell (Alternative)
 
 ```powershell
-$bigContent = "строка`n" * 2000
+$bigContent = ("line`n" * 3000)
 $body = @{
-    title = "big-test"
+    conv_id = "test-large"
+    lang = "ru"
     messages = @(
-        @{ role = "user"; content = $bigContent }
+        @{role = "user"; content = $bigContent}
     )
 } | ConvertTo-Json -Depth 10
 
-curl -sS -X POST https://miniapp.dmitrybond.tech/api/export/telegram `
-  -H "Content-Type: application/json" `
-  -d $body | ConvertFrom-Json
+try {
+    $response = Invoke-RestMethod -Uri "$base/api/export/telegram" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 60
+    $response | ConvertTo-Json -Depth 10
+} catch {
+    Write-Host "Status: $($_.Exception.Response.StatusCode.value__)"
+    $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+    $reader.ReadToEnd() | ConvertFrom-Json | ConvertTo-Json -Depth 10
+}
 ```
 
-Expected response:
+### Expected Result (200)
+
 ```json
 {
   "ok": true,
@@ -90,36 +158,80 @@ Expected response:
 }
 ```
 
-### 4. Error Cases
+## Test 4: Missing Env Variables (Error Handling)
 
-**Missing token:**
+### Test with Missing Token
+
+If `TELEGRAM_TOKEN` is not set, expect:
+
 ```json
 {
-  "detail": "TELEGRAM_TOKEN is not set"
+  "detail": "TELEGRAM_TOKEN or ADMIN_CHAT_ID is not set"
 }
 ```
-Status: 400 Bad Request
 
-**Missing chat ID:**
+Status: `400 Bad Request`
+
+### Test with Invalid Token
+
+If token is invalid, expect:
+
 ```json
 {
-  "detail": "ADMIN_CHAT_ID is not set"
+  "detail": "Telegram request failed: RuntimeError: Telegram error: {...}"
 }
 ```
-Status: 400 Bad Request
 
-**Network/API errors:**
-```json
-{
-  "detail": "Telegram request failed: ..."
-}
+Status: `502 Bad Gateway`
+
+## Test 5: Backward Compatibility (items vs messages)
+
+### Test with `items` field
+
+```bash
+curl -sS -X POST "$BASE/api/export/telegram" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "conv_id": "test-items",
+    "lang": "en",
+    "items": [
+      {"role": "user", "content": "Hello"},
+      {"role": "assistant", "content": "Hi there!"}
+    ]
+  }' | jq .
 ```
-Status: 502 Bad Gateway
 
-## Implementation Notes
+Should work the same as `messages` field.
 
-- **Chunking**: Messages ≤ 3500 chars use `sendMessage` with automatic chunking at 4096 chars (respecting line boundaries)
-- **Large files**: Messages > 3500 chars are sent as `.txt` documents via `sendDocument`
-- **Error handling**: All errors return JSON with appropriate HTTP status codes (400 for config errors, 502 for API failures)
-- **Backward compatibility**: Supports both old (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID`) and new (`TELEGRAM_TOKEN`, `ADMIN_CHAT_ID`) env variable names
+## UI Verification
 
+1. Open the miniapp in Telegram WebView
+2. Start a conversation (send a few messages)
+3. Click "Завершить и отправить в Telegram" button
+4. Verify:
+   - Button shows "Отправляю…" while sending
+   - Success message appears: "Отправила переписку в Telegram."
+   - Check Network tab: POST to `/api/export/telegram` returns 200
+   - Check Telegram admin chat: transcript received
+
+## Troubleshooting
+
+### 502 Bad Gateway
+
+- Check `TELEGRAM_TOKEN` is set and valid
+- Check `ADMIN_CHAT_ID` is set and valid
+- Check network connectivity to `api.telegram.org`
+- Check API logs: `docker compose logs api`
+
+### 400 Bad Request
+
+- Verify env variables are set in compose file
+- Check API logs for validation errors
+- Verify payload shape matches expected format
+
+### No Message Received
+
+- Verify `ADMIN_CHAT_ID` is correct (numeric chat ID)
+- Check Telegram bot has permission to send messages
+- Verify bot is not blocked by admin user
+- Check API logs for Telegram API errors

@@ -35,6 +35,8 @@ class AskResponse(BaseModel):
 
 
 class ExportRequest(BaseModel):
+    conv_id: Optional[str] = None
+    lang: Optional[Literal["en", "ru"]] = None
     messages: List[ChatMessage] = Field(default_factory=list)
     items: Optional[List[ChatMessage]] = Field(default=None)
     title: Optional[str] = None

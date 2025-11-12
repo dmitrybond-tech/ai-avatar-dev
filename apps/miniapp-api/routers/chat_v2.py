@@ -168,18 +168,32 @@ async def export_telegram(
         body.messages = body.items  # type: ignore[assignment]
     payload_messages = body.messages or []
 
+    # Extract lang from top-level or meta, default to "ru"
+    lang = body.lang
+    if not lang and body.meta:
+        lang = body.meta.get("lang", "ru")
+    if not lang:
+        lang = "ru"
+
+    # Use conv_id as title if provided, otherwise use title or generate from session_id
+    title = body.title or body.conv_id
+    if not title and body.meta and body.meta.get("session_id"):
+        title = f"chat-{body.meta['session_id']}"
+
     meta = body.meta or {}
     meta.update(
         {
             "ip": request.client.host if request.client else None,
             "user_agent": request.headers.get("user-agent"),
+            "conv_id": body.conv_id,
+            "lang": lang,
         }
     )
     try:
         result = await exporter.send(
             [ChatMessage(role=msg.role, content=msg.content) for msg in payload_messages],
             meta=meta,
-            title=body.title,
+            title=title,
             dry_run=dry_run,
         )
     except ValueError as exc:

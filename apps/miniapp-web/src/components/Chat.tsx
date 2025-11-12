@@ -316,7 +316,13 @@ export function ChatBox({ lang }: ChatBoxProps) {
         );
         return;
       }
+      // Generate conv_id: miniapp-<ISO_DATETIME>-<6rand>
+      const now = new Date().toISOString().replace(/[:.]/g, "");
+      const rand = Math.random().toString(36).slice(2, 8);
+      const convId = `miniapp-${now}-${rand}`;
       const exportPayload: ChatExportPayload = {
+        conv_id: convId,
+        lang,
         messages: conversation,
         meta: {
           session_id: sessionId,

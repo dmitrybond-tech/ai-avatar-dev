@@ -54,6 +54,8 @@ export type ChatAskResponse = {
 };
 
 export type ChatExportPayload = {
+  conv_id?: string;
+  lang?: "ru" | "en";
   messages: ChatMessageDto[];
   meta?: {
     title?: string | null;
