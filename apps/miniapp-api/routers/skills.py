@@ -70,9 +70,13 @@ def _check_csv_source(request: Request) -> None:
 
 def _list_skills_impl(request: Request, lang: Optional[str]) -> List[Dict[str, Any]]:
     _check_csv_source(request)
-    repo = _repo(request)
-    snapshot = repo.snapshot()
-    skills = snapshot.skills
+    source = os.getenv("SKILLS_SOURCE", "auto").strip().lower()
+    if source == "csv":
+        skills = get_loader().load_skills()
+    else:
+        repo = _repo(request)
+        snapshot = repo.snapshot()
+        skills = snapshot.skills
     if not skills:
         return []
     lang_key = _lang_key(lang)
@@ -101,11 +105,16 @@ def _get_skill_impl(
     lang: Optional[str],
 ) -> Dict[str, Any]:
     _check_csv_source(request)
-    repo = _repo(request)
-    snapshot = repo.snapshot()
-    skill = next((item for item in snapshot.skills if item.key == slug), None)
+    source = os.getenv("SKILLS_SOURCE", "auto").strip().lower()
+    if source == "csv":
+        skills = get_loader().load_skills()
+        skill = next((s for s in skills if s.key == slug), None)
+    else:
+        repo = _repo(request)
+        snapshot = repo.snapshot()
+        skill = next((item for item in snapshot.skills if item.key == slug), None)
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="skill_not_found")
     if lang:
         return _project_detail(skill, _lang_key(lang))
     return {

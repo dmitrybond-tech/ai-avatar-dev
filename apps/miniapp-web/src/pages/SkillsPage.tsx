@@ -199,7 +199,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
     }
 
     return (
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {skills.map((item) => {
           const isActive = selectedSlug === item.slug && drawerOpen
           const uniqueTags = item.tags ? Array.from(new Set(item.tags)) : []

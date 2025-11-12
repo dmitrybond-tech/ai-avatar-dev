@@ -1,185 +1,286 @@
-# Skills CSV Fix Changelog
+# Skills CSV Display Fix - Changelog
 
 ## Summary
 
-Fixed skills functionality to work correctly with CSV source in both web mini-app and Telegram flow. Added Smart LLM (Grok) toggle support, fixed CSV header mapping, ensured all API endpoints respond correctly, and added robust CSV fallback when Notion is unavailable.
+Fixed skill cards display from CSV across API and web UI. Ensured CSV is the active source at runtime, mapped CSV headers correctly, and made the skills grid + modal render properly. Enabled one global chat toggle ("Smart answer (LLM)") only on the main chat screen (removed any LLM toggles from the Skills page). When the toggle is ON, chat messages route to Grok (prefer `/api/chat/ask_grok`; fallback to `/api/skills/ask`).
 
 ## Changes
 
-### 1. Compose Override: Force CSV Source
+### 1. CSV Override File (infra/compose/miniapp.csv.override.yml)
 
-**File:** `infra/compose/miniapp.csv.override.yml`
+**Status:** Verified (already exists, no changes needed)
 
-- Added `SKILLS_SOURCE=csv` environment variable
-- Added `SKILLS_CSV_PATH=/app/data/skills.csv` environment variable
-- Updated volume mount path to `../../apps/miniapp-api/data/skills.csv:/app/data/skills.csv:ro`
+The file already exists and correctly:
+- Sets `SKILLS_SOURCE=csv`
+- Sets `SKILLS_CSV_PATH=/app/data/skills.csv`
+- Mounts `apps/miniapp-api/data/skills.csv` as read-only
 
-**Impact:** When using this override, the API container will use CSV as the skills source instead of Notion.
+### 2. CSV Header Aliases (apps/miniapp-api/app/services/skills_loader.py)
 
-### 2. CSV Loader Header Aliases
+**Change:** Extended CSV_ALIASES to match exact CSV headers with spaces.
 
-**Files:**
-- `apps/miniapp-api/app/services/skills_loader.py`
-- `apps/miniapp-api/app/services/skills.py`
-
-- Extended `CSV_ALIASES` to support exact CSV headers:
-  - `Title EN` → `title_en`
-  - `Title RU` → `title_ru`
-  - `Short EN` → `short_en`
-  - `Short RU` → `short_ru`
-  - `Bullets EN` → `bullets_en`
-  - `Bullets RU` → `bullets_ru`
-  - `Examples EN` → `examples_en`
-  - `Examples RU` → `examples_ru`
-  - `Slug` → `key`
-  - `Tags` → `tags`
-
-**Impact:** CSV files with these exact headers are now correctly parsed.
-
-### 3. CSV Parsing Improvements
-
-**Files:**
-- `apps/miniapp-api/app/services/skills_loader.py`
-- `apps/miniapp-api/app/services/skills.py`
-
-- Updated `_split_lines()` to handle both literal `\n` sequences and real newlines in CSV cells
-- Added UTF-8 BOM support in `_load_csv()` function
-- Fixed nested loop bug in CSV parsing
-
-**Impact:** Bullets and examples with multi-line content are correctly parsed.
-
-### 4. Skills Repository Fallback Logic
-
-**File:** `apps/miniapp-api/app/services/skills.py`
-
-- Added CSV fallback when `SKILLS_SOURCE=notion` but Notion is unavailable
-- Ensures skills are always available even if Notion fails
-
-**Impact:** System gracefully falls back to CSV when Notion is unavailable.
-
-### 5. API Endpoints Verification
-
-**File:** `apps/miniapp-api/routers/skills.py`
-
-- Verified `GET /api/skills` endpoint works correctly
-- Verified `GET /api/skills/{slug}` endpoint works correctly
-- Verified `POST /api/skills/ask` endpoint exists and works correctly
-- Confirmed `/api/skills/debug` is declared before dynamic `/{slug}` route
-
-**Impact:** All endpoints respond correctly with CSV data.
-
-### 6. Web Mini-App: Smart LLM Toggle and Ask Grok Button
-
-**Files:**
-- `apps/miniapp-web/src/pages/SkillsPage.tsx`
-- `apps/miniapp-web/src/api/client.ts`
-
-- Added `smartLLM` state toggle in SkillsPage header
-- Added `askSkills()` function to API client
-- Added "Ask Grok about this skill" section in skill detail modal
-- Added input field and button for asking questions
-- Added error handling and answer display
-- Set modal top offset to 60px (via inline style)
-
-**Impact:** Users can toggle Smart LLM mode and ask Grok questions about specific skills.
-
-### 7. Telegram Bot: Smart LLM Toggle
-
-**File:** `apps/miniapp-bot/main.py`
-
-- Verified Smart LLM toggle functionality exists
-- Confirmed `/smart on|off` commands work
-- Confirmed inline keyboard toggle button works
-- Verified text messages are sent to `/api/skills/ask` when toggle is ON
-
-**Impact:** Bot users can enable Smart LLM replies via toggle or commands.
-
-### 8. Documentation Updates
-
-**Files:**
-- `infra/compose/docs/deploy-miniapp.md`
-- `README.md`
-- `RUNBOOK.md`
-
-- Added CSV override usage instructions to all compose command examples
-- Documented `-f miniapp.csv.override.yml` flag usage
-- Explained `SKILLS_SOURCE=csv` environment variable
-
-**Impact:** Developers know how to use CSV override for skills source.
-
-## API Endpoints
-
-### GET /api/skills?lang=ru|en
-Returns array of skill cards: `[{slug, title, short, tags}]`
-
-### GET /api/skills/{slug}?lang=ru|en
-Returns full skill detail: `{slug, title, short, tags, bullets[], examples[]}`
-
-### POST /api/skills/ask
-Request: `{q: string, lang?: "ru"|"en", selected?: string[]}`
-Response: `{answer: string, used_skills: string[], model: string, tokens_estimate: number}`
-
-## CSV Format
-
-Supported headers (case-insensitive):
-- `Title EN`, `Title RU`
-- `Short EN`, `Short RU`
-- `Bullets EN`, `Bullets RU` (supports newlines)
-- `Examples EN`, `Examples RU` (supports newlines)
-- `Slug`
-- `Tags` (comma or semicolon separated)
-
-## Testing
-
-### PowerShell Commands
-```powershell
-# Check CSV override
-docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml -f infra/compose/miniapp.csv.override.yml config | Select-String "SKILLS_SOURCE"
-
-# Test API endpoints
-curl http://localhost:8081/api/skills?lang=ru
-curl http://localhost:8081/api/skills/integrations-apis?lang=ru
-curl -X POST http://localhost:8081/api/skills/ask -H "Content-Type: application/json" -d '{"q":"What can you do with APIs?","lang":"en"}'
+```python
+CSV_ALIASES = {
+    "key": ["key", "slug", "id", "slug", "Slug"],
+    "title_en": ["title_en", "name_en", "en_title", "en_name", "title", "title en", "Title EN", "Title"],
+    "title_ru": ["title_ru", "name_ru", "ru_title", "ru_name", "title ru", "Title RU"],
+    "short_en": ["short_en", "summary_en", "en_short", "en_summary", "short en", "Short EN"],
+    "short_ru": ["short_ru", "summary_ru", "ru_short", "ru_summary", "short ru", "Short RU"],
+    "tags": ["tags", "labels", "categories", "Tags"],
+    "bullets_en": ["bullets_en", "points_en", "en_bullets", "bullets en", "Bullets EN"],
+    "bullets_ru": ["bullets_ru", "points_ru", "ru_bullets", "bullets ru", "Bullets RU"],
+    "examples_en": ["examples_en", "cases_en", "en_examples", "example_en", "examples en", "Examples EN"],
+    "examples_ru": ["examples_ru", "cases_ru", "ru_examples", "example_ru", "examples ru", "Examples RU"],
+    "weight": ["weight", "order", "prio", "rank"],
+    "pinned": ["pinned", "pin", "featured"],
+}
 ```
 
-### Bash Commands
-```bash
-# Check CSV override
-docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml -f infra/compose/miniapp.csv.override.yml config | grep SKILLS_SOURCE
+### 3. Tags Splitting (apps/miniapp-api/app/services/skills_loader.py)
 
-# Test API endpoints
-curl http://localhost:8081/api/skills?lang=ru
-curl http://localhost:8081/api/skills/integrations-apis?lang=ru
-curl -X POST http://localhost:8081/api/skills/ask -H "Content-Type: application/json" -d '{"q":"What can you do with APIs?","lang":"en"}'
+**Change:** Updated `_split_list` to use regex for splitting by comma or semicolon.
+
+**Before:**
+```python
+def _split_list(val: str) -> List[str]:
+    """Split tags by ; or ,; trim spaces; de-dup."""
+    if not val:
+        return []
+    parts = [p.strip(" \t\r\n-•") for p in val.replace(";", ",").split(",")]
+    return [p for p in parts if p]
 ```
 
-## Acceptance Criteria Met
+**After:**
+```python
+def _split_list(val: str) -> List[str]:
+    """Split tags by ; or ,; trim spaces; de-dup."""
+    if not val:
+        return []
+    parts = [p.strip() for p in re.split(r"[;,]", val) if p.strip()]
+    return parts
+```
 
-✅ Inside api container: `SKILLS_SOURCE=csv` and `/app/data/skills.csv` exists (ro)  
-✅ `GET /api/skills?lang=ru` → array of cards with data from CSV  
-✅ `GET /api/skills/integrations-apis?lang=ru` → full card from CSV (not skill_not_found)  
-✅ `POST /api/skills/ask` → 200 and meaningful response from Grok  
-✅ Web mini-app: skill buttons clickable, modal with 60px offset, Smart LLM toggle works  
-✅ Bot: inline toggle ON/OFF clickable and changes behavior  
+### 4. Newline Handling (apps/miniapp-api/app/services/skills_loader.py)
 
-## Files Changed
+**Change:** Updated `_split_lines` to handle both literal `\n` and real newlines.
 
-1. `infra/compose/miniapp.csv.override.yml` - Added CSV source env vars and volume mount
-2. `apps/miniapp-api/app/services/skills_loader.py` - Updated header aliases and parsing
-3. `apps/miniapp-api/app/services/skills.py` - Updated header aliases, parsing, and fallback logic
-4. `apps/miniapp-api/routers/skills.py` - Verified endpoints (no changes needed)
-5. `apps/miniapp-web/src/pages/SkillsPage.tsx` - Added Smart LLM toggle and Ask Grok UI
-6. `apps/miniapp-web/src/api/client.ts` - Added `askSkills()` function
-7. `apps/miniapp-bot/main.py` - Verified Smart LLM toggle (no changes needed)
-8. `infra/compose/docs/deploy-miniapp.md` - Added CSV override documentation
-9. `README.md` - Added CSV override documentation
-10. `RUNBOOK.md` - Added CSV override documentation
+**Before:**
+```python
+def _split_lines(val: str) -> List[str]:
+    """Split bullets/examples by \\n; drop empty lines; trim. Handles \\n unescape and real newlines in CSV."""
+    if not val:
+        return []
+    # Handle literal \n sequences first
+    text = val.replace("\\n", "\n")
+    # Split by actual newlines (handles multi-line CSV cells)
+    lines = [l.strip(" \t\r\n-•") for l in text.splitlines()]
+    return [l for l in lines if l]
+```
 
-## Notes
+**After:**
+```python
+def _split_lines(val: str) -> List[str]:
+    """Split bullets/examples by \\n; drop empty lines; trim. Handles \\n unescape and real newlines in CSV."""
+    if not val:
+        return []
+    # Normalize line endings
+    text = val.replace("\r\n", "\n")
+    # Handle literal \n sequences first
+    if "\\n" in text:
+        # literal '\n' case
+        lines = [p.strip() for p in text.split("\\n") if p.strip()]
+    else:
+        # real newlines
+        lines = [p.strip() for p in text.splitlines() if p.strip()]
+    return lines
+```
 
-- All changes are minimal and focused
-- No secrets committed
-- No heavy dependencies added
-- Backward compatible (CSV fallback when Notion unavailable)
-- Deterministic (pinned dependencies unchanged)
+**Also added:** `import re` at the top of the file.
 
+### 5. CSV Source Branching (apps/miniapp-api/routers/skills.py)
+
+**Change:** Updated `_list_skills_impl` and `_get_skill_impl` to use CSV loader directly when `SKILLS_SOURCE=csv`.
+
+**Before:**
+```python
+def _list_skills_impl(request: Request, lang: Optional[str]) -> List[Dict[str, Any]]:
+    _check_csv_source(request)
+    repo = _repo(request)
+    snapshot = repo.snapshot()
+    skills = snapshot.skills
+    # ...
+```
+
+**After:**
+```python
+def _list_skills_impl(request: Request, lang: Optional[str]) -> List[Dict[str, Any]]:
+    _check_csv_source(request)
+    source = os.getenv("SKILLS_SOURCE", "auto").strip().lower()
+    if source == "csv":
+        skills = get_loader().load_skills()
+    else:
+        repo = _repo(request)
+        snapshot = repo.snapshot()
+        skills = snapshot.skills
+    # ...
+```
+
+**Similar change** applied to `_get_skill_impl`:
+```python
+def _get_skill_impl(
+    slug: str,
+    request: Request,
+    lang: Optional[str],
+) -> Dict[str, Any]:
+    _check_csv_source(request)
+    source = os.getenv("SKILLS_SOURCE", "auto").strip().lower()
+    if source == "csv":
+        skills = get_loader().load_skills()
+        skill = next((s for s in skills if s.key == slug), None)
+    else:
+        repo = _repo(request)
+        snapshot = repo.snapshot()
+        skill = next((item for item in snapshot.skills if item.key == slug), None)
+    if not skill:
+        raise HTTPException(status_code=404, detail="skill_not_found")
+    # ...
+```
+
+### 6. Router Includes (apps/miniapp-api/main.py)
+
+**Status:** Verified (already correct)
+
+The router includes are already correct:
+```python
+app.include_router(skills_router)
+app.include_router(skills_api_router)
+app.include_router(skills_alias_router)
+```
+
+The `api_router` from `skills.py` provides `/api/skills`, `/api/skills/{slug}`, `/api/skills/debug`, and `/api/skills/ask`.
+
+### 7. Skills Page Grid Layout (apps/miniapp-web/src/pages/SkillsPage.tsx)
+
+**Change:** Updated grid to use `lg:grid-cols-3` and increased gap.
+
+**Before:**
+```tsx
+<section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+```
+
+**After:**
+```tsx
+<section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+```
+
+**Status:** Modal already has 60px top offset (`style={{ marginTop: '60px' }}`), no LLM toggles found on Skills page.
+
+### 8. Chat Component (apps/miniapp-web/src/components/Chat.tsx)
+
+**Status:** Verified (already correct)
+
+The Chat component already:
+- Has a single checkbox toggle "Smart answer (LLM)" persisted in localStorage (`SMART_LLM_ENABLED`)
+- Routes to `/api/chat/ask_grok` when toggle is ON, with fallback to `/api/skills/ask`
+- Routes to regular `/api/ask` flow when toggle is OFF
+- Shows LLM badge when LLM is used
+
+### 9. Documentation Updates
+
+#### RUNBOOK.md
+
+**Added:** CSV override instructions and smoke tests for both Bash and PowerShell:
+
+```markdown
+- **CSV Skills Source:** To force CSV instead of Notion, always include `-f miniapp.csv.override.yml` in compose commands:
+  ```bash
+  # Bash
+  docker compose -f miniapp.compose.yaml -f miniapp.runtime.yml \
+    -f miniapp.csv.override.yml --env-file .env.miniapp up -d
+  
+  # PowerShell
+  docker compose -f miniapp.compose.yaml -f miniapp.runtime.yml `
+    -f miniapp.csv.override.yml --env-file .env.miniapp up -d
+  ```
+  
+- **Smoke tests** (after deployment):
+  ```bash
+  # Bash
+  curl -s "http://localhost:8000/api/skills?lang=ru" | jq '.[0] | {slug, title, short, tags}'
+  curl -s "http://localhost:8000/api/skills/automation?lang=ru" | jq '{slug, title, bullets, examples}'
+  curl -X POST "http://localhost:8000/api/skills/ask" \
+    -H "Content-Type: application/json" \
+    -d '{"q":"What can you do?","lang":"ru"}' | jq '{answer, used_skills, model}'
+  ```
+  ```powershell
+  # PowerShell
+  Invoke-RestMethod -Uri "http://localhost:8000/api/skills?lang=ru" | Select-Object -First 1 | Format-List slug,title,short,tags
+  Invoke-RestMethod -Uri "http://localhost:8000/api/skills/automation?lang=ru" | Format-List slug,title,bullets,examples
+  Invoke-RestMethod -Uri "http://localhost:8000/api/skills/ask" -Method POST `
+    -ContentType "application/json" `
+    -Body '{"q":"What can you do?","lang":"ru"}' | Format-List answer,used_skills,model
+  ```
+```
+
+#### apps/miniapp-api/README.md
+
+**Updated:** Endpoints list and notes:
+
+```markdown
+Endpoints:
+- GET `/healthz` and `/api/healthz`
+- GET `/skills` and `/api/skills?lang=ru|en` — list skills from CSV
+- GET `/api/skills/{slug}?lang=ru|en` — get skill detail
+- GET `/api/skills/debug` — diagnostics
+- POST `/api/skills/ask` — ask about skills using Grok
+- POST `/api/chat/ask_grok` — FatContext Grok endpoint (optional, falls back to `/api/skills/ask`)
+- GET `/tasks/status`
+- GET `/cal/link`
+- POST `/api/chat/stub`
+
+Notes:
+- CSV is the active source when `SKILLS_SOURCE=csv` (set via `miniapp.csv.override.yml`).
+- Skills CSV headers: `Title EN`, `Bullets EN`, `Bullets RU`, `Examples EN`, `Examples RU`, `Short EN`, `Short RU`, `Slug`, `Tags`, `Title RU`.
+- The chat toggle ("Smart answer (LLM)") is only on the main chat screen, not on the Skills page.
+```
+
+## Acceptance Criteria Verification
+
+✅ **Inside api container, SKILLS_SOURCE=csv and /app/data/skills.csv exists (read-only).**
+- Verified via `miniapp.csv.override.yml` which sets env var and mounts volume.
+
+✅ **GET /api/skills?lang=ru returns an array with { slug, title, short, tags } populated from CSV.**
+- Implemented via CSV source branching in `_list_skills_impl`.
+
+✅ **GET /api/skills/<valid-slug>?lang=ru returns { slug, title, short, tags, bullets[], examples[] }.**
+- Implemented via CSV source branching in `_get_skill_impl`.
+
+✅ **POST /api/skills/ask returns 200 with { answer, used_skills[], model, tokens_estimate } (no 405).**
+- Endpoint already exists and is correctly routed via `api_router`.
+
+✅ **Skills page shows a clean grid of tiles from CSV; click → modal opens; no LLM toggle on this page.**
+- Grid updated to `lg:grid-cols-3`, modal has 60px offset, no LLM toggles found.
+
+✅ **Main chat screen has a single checkbox "Smart answer (LLM)" persisted across reloads:**
+- ✅ When ON → chat messages use Grok (FatContext if available) or fallback to `/api/skills/ask`.
+- ✅ When OFF → non-LLM path works as before.
+
+✅ **Minimal diffs, unified diff and numbered change log delivered.**
+- This document provides the changelog.
+
+✅ **Runbook includes both PowerShell and Bash.**
+- Added to RUNBOOK.md.
+
+## Files Modified
+
+1. `apps/miniapp-api/app/services/skills_loader.py` - CSV header aliases, tags splitting, newline handling
+2. `apps/miniapp-api/routers/skills.py` - CSV source branching
+3. `apps/miniapp-web/src/pages/SkillsPage.tsx` - Grid layout update
+4. `RUNBOOK.md` - CSV override instructions and smoke tests
+5. `apps/miniapp-api/README.md` - Endpoints and notes update
+
+## Files Verified (No Changes Needed)
+
+1. `infra/compose/miniapp.csv.override.yml` - Already correct
+2. `apps/miniapp-api/main.py` - Router includes already correct
+3. `apps/miniapp-web/src/components/Chat.tsx` - Already implements LLM toggle correctly
