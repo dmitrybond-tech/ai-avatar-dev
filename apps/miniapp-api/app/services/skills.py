@@ -21,17 +21,18 @@ from ..core import env as env_utils
 logger = logging.getLogger(__name__)
 
 # CSV header aliases for tolerant ingestion
+# Supports exact headers: Title EN, Bullets EN, Bullets RU, Examples EN, Examples RU, Short EN, Short RU, Slug, Tags, Title RU
 CSV_ALIASES = {
-    "key": ["key", "slug", "id"],
-    "title_en": ["title_en", "name_en", "en_title", "en_name", "title"],
-    "title_ru": ["title_ru", "name_ru", "ru_title", "ru_name"],
-    "short_en": ["short_en", "summary_en", "en_short", "en_summary"],
-    "short_ru": ["short_ru", "summary_ru", "ru_short", "ru_summary"],
+    "key": ["key", "slug", "id", "slug"],
+    "title_en": ["title_en", "name_en", "en_title", "en_name", "title", "title en"],
+    "title_ru": ["title_ru", "name_ru", "ru_title", "ru_name", "title ru"],
+    "short_en": ["short_en", "summary_en", "en_short", "en_summary", "short en"],
+    "short_ru": ["short_ru", "summary_ru", "ru_short", "ru_summary", "short ru"],
     "tags": ["tags", "labels", "categories"],
-    "bullets_en": ["bullets_en", "points_en", "en_bullets"],
-    "bullets_ru": ["bullets_ru", "points_ru", "ru_bullets"],
-    "examples_en": ["examples_en", "cases_en", "en_examples"],
-    "examples_ru": ["examples_ru", "cases_ru", "ru_examples"],
+    "bullets_en": ["bullets_en", "points_en", "en_bullets", "bullets en"],
+    "bullets_ru": ["bullets_ru", "points_ru", "ru_bullets", "bullets ru"],
+    "examples_en": ["examples_en", "cases_en", "en_examples", "example_en", "examples en"],
+    "examples_ru": ["examples_ru", "cases_ru", "ru_examples", "example_ru", "examples ru"],
     "weight": ["weight", "order", "prio"],
     "pinned": ["pinned", "pin", "featured"],
 }
@@ -57,10 +58,13 @@ def _split_list(val: str) -> List[str]:
 
 
 def _split_lines(val: str) -> List[str]:
-    """Split bullets/examples by \\n; drop empty lines; trim."""
+    """Split bullets/examples by \\n; drop empty lines; trim. Handles \\n unescape and real newlines in CSV."""
     if not val:
         return []
-    lines = [l.strip(" \t\r\n-•") for l in val.splitlines()]
+    # Handle literal \n sequences first
+    text = val.replace("\\n", "\n")
+    # Split by actual newlines (handles multi-line CSV cells)
+    lines = [l.strip(" \t\r\n-•") for l in text.splitlines()]
     return [l for l in lines if l]
 
 
@@ -174,6 +178,10 @@ class SkillsRepository:
             csv_used = True
         elif src == "notion":
             skills, notion_ok = self._load_from_notion()
+            # Fallback to CSV if Notion fails
+            if not skills:
+                skills = _load_csv(csv_file)
+                csv_used = True
         else:  # auto
             if use_notion:
                 skills, notion_ok = self._load_from_notion()
@@ -292,53 +300,74 @@ def _load_csv(path: Path) -> List[SkillRecord]:
         return []
     items: List[SkillRecord] = []
     try:
-        with path.open(encoding="utf-8", newline="") as f:
-            rdr = csv.DictReader(f)
-            # Normalize row keys to lowercase for case-insensitive matching
-            normalized_rows = []
-            for row in rdr:
-                normalized = {str(k).lower(): v for k, v in row.items()}
-                normalized_rows.append(normalized)
-            for i, row in enumerate(normalized_rows):
-                key = _h(row, "key") or f"skill_{i}"
-                title_en = _h(row, "title_en") or key
-                title_ru = _h(row, "title_ru") or title_en
-                short_en = _h(row, "short_en")
-                short_ru = _h(row, "short_ru") or short_en
-                tags = _split_list(_h(row, "tags"))
-                bullets_en = _split_lines(_h(row, "bullets_en"))
-                bullets_ru = _split_lines(_h(row, "bullets_ru"))
-                examples_en = _split_lines(_h(row, "examples_en"))
-                examples_ru = _split_lines(_h(row, "examples_ru"))
-                weight = _to_int(_h(row, "weight"), 0)
-                pinned = _to_bool(_h(row, "pinned"))
+        # Try UTF-8 with BOM first, then fallback to UTF-8
+        encodings = ["utf-8-sig", "utf-8"]
+        content = None
+        encoding_used = None
+        
+        for enc in encodings:
+            try:
+                with path.open(encoding=enc, newline="") as f:
+                    content = f.read()
+                    encoding_used = enc
+                    break
+            except UnicodeDecodeError:
+                continue
+        
+        if content is None:
+            logger.error("Failed to decode CSV %s with any encoding", path)
+            return []
+        
+        # Parse CSV content
+        import io
+        rdr = csv.DictReader(io.StringIO(content))
+        # Normalize row keys to lowercase for case-insensitive matching
+        normalized_rows = []
+        for row in rdr:
+            normalized = {str(k).lower(): v for k, v in row.items()}
+            normalized_rows.append(normalized)
+        
+        for i, row in enumerate(normalized_rows):
+            key = _h(row, "key") or f"skill_{i}"
+            title_en = _h(row, "title_en") or key
+            title_ru = _h(row, "title_ru") or title_en
+            short_en = _h(row, "short_en")
+            short_ru = _h(row, "short_ru") or short_en
+            tags = _split_list(_h(row, "tags"))
+            bullets_en = _split_lines(_h(row, "bullets_en"))
+            bullets_ru = _split_lines(_h(row, "bullets_ru"))
+            examples_en = _split_lines(_h(row, "examples_en"))
+            examples_ru = _split_lines(_h(row, "examples_ru"))
+            weight = _to_int(_h(row, "weight"), 0)
+            pinned = _to_bool(_h(row, "pinned"))
 
-                if not (title_en or title_ru):
-                    continue
+            if not (title_en or title_ru):
+                continue
 
-                items.append(
-                    SkillRecord(
-                        key=key,
-                        title_en=title_en,
-                        title_ru=title_ru,
-                        short_en=short_en,
-                        short_ru=short_ru,
-                        tags=tags,
-                        bullets_en=bullets_en,
-                        bullets_ru=bullets_ru,
-                        examples_en=examples_en,
-                        examples_ru=examples_ru,
-                        weight=weight,
-                        pinned=pinned,
-                        source="csv",
-                    )
+            items.append(
+                SkillRecord(
+                    key=key,
+                    title_en=title_en,
+                    title_ru=title_ru,
+                    short_en=short_en,
+                    short_ru=short_ru,
+                    tags=tags,
+                    bullets_en=bullets_en,
+                    bullets_ru=bullets_ru,
+                    examples_en=examples_en,
+                    examples_ru=examples_ru,
+                    weight=weight,
+                    pinned=pinned,
+                    source="csv",
                 )
+            )
     except Exception as exc:  # pragma: no cover - csv failure
         logger.warning("Failed to read CSV %s: %s", path, exc)
         return []
 
     # stable ordering: pinned desc, weight desc, key asc
     items.sort(key=lambda s: (-int(getattr(s, "pinned", False)), -int(getattr(s, "weight", 0)), s.key))
+    logger.info("Loaded %d skills from CSV %s (encoding=%s)", len(items), path, encoding_used)
     return items
 
 

@@ -77,6 +77,40 @@ export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortS
   };
 }
 
+export type SkillsAskRequest = {
+  q: string;
+  lang?: "ru" | "en";
+  selected?: string[];
+};
+
+export type SkillsAskResponse = {
+  answer: string;
+  used_skills: string[];
+  model: string;
+  tokens_estimate: number;
+};
+
+export async function askSkills(payload: SkillsAskRequest, signal?: AbortSignal): Promise<SkillsAskResponse> {
+  const r = await apiFetch("/skills/ask", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    const snippet = text.length > 200 ? `${text.slice(0, 200)}…` : text;
+    throw new ChatRequestError(r.status, `${getApiBaseUrl()}/skills/ask`, snippet.trim());
+  }
+  const data = await r.json();
+  return {
+    answer: typeof data?.answer === "string" ? data.answer : "",
+    used_skills: ensureStringArray(data?.used_skills),
+    model: typeof data?.model === "string" ? data.model : "unknown",
+    tokens_estimate: typeof data?.tokens_estimate === "number" ? data.tokens_estimate : 0,
+  };
+}
+
 export async function getTasks(): Promise<TasksStatusResponse> {
   const r = await apiFetch("/tasks/status");
   return r.json();

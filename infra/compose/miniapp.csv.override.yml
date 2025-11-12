@@ -1,6 +1,9 @@
-# Optional override for mounting host CSV file
+# Optional override for mounting host CSV file and forcing CSV source
 # Usage: docker compose -f miniapp.compose.yaml -f miniapp.csv.override.yml up
 services:
   api:
+    environment:
+      SKILLS_SOURCE: csv
+      SKILLS_CSV_PATH: /app/data/skills.csv
     volumes:
-      - ./data/skills.csv:/app/data/skills.csv:ro
+      - ../../apps/miniapp-api/data/skills.csv:/app/data/skills.csv:ro

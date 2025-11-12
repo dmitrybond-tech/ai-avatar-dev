@@ -15,17 +15,18 @@ from ..core import env as env_utils
 logger = logging.getLogger(__name__)
 
 # CSV header aliases for tolerant ingestion
+# Supports exact headers: Title EN, Bullets EN, Bullets RU, Examples EN, Examples RU, Short EN, Short RU, Slug, Tags, Title RU
 CSV_ALIASES = {
-    "key": ["key", "slug", "id"],
-    "title_en": ["title_en", "name_en", "en_title", "en_name", "title", "title en"],
-    "title_ru": ["title_ru", "name_ru", "ru_title", "ru_name", "title ru"],
-    "short_en": ["short_en", "summary_en", "en_short", "en_summary", "short en"],
-    "short_ru": ["short_ru", "summary_ru", "ru_short", "ru_summary", "short ru"],
-    "tags": ["tags", "labels", "categories"],
-    "bullets_en": ["bullets_en", "points_en", "en_bullets", "bullets en"],
-    "bullets_ru": ["bullets_ru", "points_ru", "ru_bullets", "bullets ru"],
-    "examples_en": ["examples_en", "cases_en", "en_examples", "example_en", "examples en"],
-    "examples_ru": ["examples_ru", "cases_ru", "ru_examples", "example_ru", "examples ru"],
+    "key": ["key", "slug", "id", "slug"],
+    "title_en": ["title_en", "name_en", "en_title", "en_name", "title", "title en", "title en"],
+    "title_ru": ["title_ru", "name_ru", "ru_title", "ru_name", "title ru", "title ru"],
+    "short_en": ["short_en", "summary_en", "en_short", "en_summary", "short en", "short en"],
+    "short_ru": ["short_ru", "summary_ru", "ru_short", "ru_summary", "short ru", "short ru"],
+    "tags": ["tags", "labels", "categories", "tags"],
+    "bullets_en": ["bullets_en", "points_en", "en_bullets", "bullets en", "bullets en"],
+    "bullets_ru": ["bullets_ru", "points_ru", "ru_bullets", "bullets ru", "bullets ru"],
+    "examples_en": ["examples_en", "cases_en", "en_examples", "example_en", "examples en", "examples en"],
+    "examples_ru": ["examples_ru", "cases_ru", "ru_examples", "example_ru", "examples ru", "examples ru"],
     "weight": ["weight", "order", "prio", "rank"],
     "pinned": ["pinned", "pin", "featured"],
 }
@@ -51,11 +52,12 @@ def _split_list(val: str) -> List[str]:
 
 
 def _split_lines(val: str) -> List[str]:
-    """Split bullets/examples by \\n; drop empty lines; trim. Handles \\n unescape."""
+    """Split bullets/examples by \\n; drop empty lines; trim. Handles \\n unescape and real newlines in CSV."""
     if not val:
         return []
-    # Handle literal \n sequences
+    # Handle literal \n sequences first
     text = val.replace("\\n", "\n")
+    # Split by actual newlines (handles multi-line CSV cells)
     lines = [l.strip(" \t\r\n-•") for l in text.splitlines()]
     return [l for l in lines if l]
 

@@ -402,6 +402,15 @@ docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.ru
   --env-file infra/compose/.env.miniapp up -d
 ```
 
+**Optional:** To force CSV source for skills (instead of Notion), add the CSV override:
+```bash
+docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.runtime.yml \
+  -f infra/compose/miniapp.csv.override.yml \
+  --env-file infra/compose/.env.miniapp up -d
+```
+
+This sets `SKILLS_SOURCE=csv` and mounts `apps/miniapp-api/data/skills.csv` into the API container.
+
 ### MiniApp Helper Script
 
 ```bash

@@ -17,6 +17,12 @@
   - Start (or converge) services: `./scripts/run-miniapp.sh up`
     - Adds `--wait` automatically; set `MINIAPP_NO_WAIT=1` to skip.
     - Target specific services with `SERVICES="api web" ./scripts/run-miniapp.sh up`.
+  - **CSV Skills Source:** To force CSV instead of Notion, add `-f miniapp.csv.override.yml` to compose commands:
+    ```bash
+    docker compose -f miniapp.compose.yaml -f miniapp.runtime.yml \
+      -f miniapp.csv.override.yml --env-file .env.miniapp up -d
+    ```
+    This sets `SKILLS_SOURCE=csv` and mounts `apps/miniapp-api/data/skills.csv` (read-only).
   - Alternate Make targets:
     - `make pull` — wraps `run-miniapp.sh pull`
     - `make up ARGS=--build` — pass extra flags through `ARGS`
