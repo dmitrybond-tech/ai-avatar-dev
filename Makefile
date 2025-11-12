@@ -2,7 +2,7 @@ RUN_MINIAPP := ./scripts/run-miniapp.sh
 SERVICES ?=
 ARGS ?=
 
-.PHONY: pull up down logs ps config
+.PHONY: pull up down logs ps config validate-csv
 
 pull:
 	$(RUN_MINIAPP) pull $(SERVICES)
@@ -21,4 +21,7 @@ ps:
 
 config:
 	$(RUN_MINIAPP) config
+
+validate-csv:
+	python3 tools/validate_skills_csv.py
 

@@ -175,8 +175,8 @@ class SkillsLoader:
         csv_path_env = os.getenv("SKILLS_CSV_PATH")
         if csv_path_env:
             return Path(csv_path_env)
-        default_csv = Path(__file__).resolve().parent.parent.parent / "data" / "skills.csv"
-        return Path(os.getenv("SKILLS_CSV_PATH") or "/app/data/skills.csv" or str(default_csv))
+        # Default to /app/data/skills.csv (container path)
+        return Path("/app/data/skills.csv")
 
     def _get_mtime(self) -> Optional[float]:
         """Get file modification time, or None if file doesn't exist."""
@@ -210,13 +210,19 @@ class SkillsLoader:
                         "engine": "python",
                         "quotechar": '"',
                         "skipinitialspace": True,
+                        "keep_default_na": False,  # Don't treat empty strings as NaN
                     }
                     # Try with on_bad_lines for newer pandas, fallback to error_bad_lines for older
                     try:
                         df = pd.read_csv(csv_path, **read_kwargs, on_bad_lines="skip")
                     except TypeError:
                         # Fallback for older pandas versions
-                        df = pd.read_csv(csv_path, **read_kwargs, error_bad_lines=False, warn_bad_lines=False)
+                        try:
+                            df = pd.read_csv(csv_path, **read_kwargs, error_bad_lines=False, warn_bad_lines=False)
+                        except TypeError:
+                            # Even older pandas - remove keep_default_na if not supported
+                            read_kwargs.pop("keep_default_na", None)
+                            df = pd.read_csv(csv_path, **read_kwargs, error_bad_lines=False, warn_bad_lines=False)
                     encoding_used = enc
                     break
                 except UnicodeDecodeError:
@@ -236,8 +242,14 @@ class SkillsLoader:
             normalized_rows = df.to_dict("records")
 
             for i, row in enumerate(normalized_rows):
-                # Convert all values to strings, handling NaN
-                row_str = {str(k).lower(): (str(v) if pd.notna(v) else "") for k, v in row.items()}
+                # Convert all values to strings, handling NaN and None
+                row_str = {}
+                for k, v in row.items():
+                    key_lower = str(k).lower()
+                    if pd.isna(v) or v is None:
+                        row_str[key_lower] = ""
+                    else:
+                        row_str[key_lower] = str(v)
 
                 key = _h(row_str, "key") or f"skill_{i}"
                 title_en = _h(row_str, "title_en") or key
