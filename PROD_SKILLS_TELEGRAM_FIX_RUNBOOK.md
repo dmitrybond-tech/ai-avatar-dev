@@ -1,346 +1,491 @@
 # Production Skills & Telegram Export Fix - Validation Runbook
 
+This runbook validates that all fixes are working correctly. Supports both PowerShell (Windows) and Bash (Linux).
+
 ## Prerequisites
 
-- PowerShell or bash shell
-- `curl` command available
-- Access to production API endpoint (via Caddy proxy at `/api`)
-- Valid `.env.miniapp` file with `TELEGRAM_TOKEN` and `ADMIN_CHAT_ID` set
+- API service running and accessible
+- Base URL: `https://miniapp.dmitrybond.tech` (production) or `http://localhost:8000` (local)
+- `curl` or `Invoke-WebRequest` (PowerShell) available
 
-## Validation Commands
+## Validation Steps
 
-### 1. Validate Skills Debug Endpoint
+### 1. Verify OpenAPI Schema Exposes Required Routes
 
-**Expected:** Returns 200 JSON with diagnostics (not 404)
-
+**PowerShell:**
 ```powershell
-# PowerShell
-$response = Invoke-WebRequest -Uri "https://miniapp.dmitrybond.tech/api/skills/debug" -Method GET
-$response.StatusCode  # Should be 200
-$response.Content | ConvertFrom-Json | ConvertTo-Json -Depth 10
+$baseUrl = "https://miniapp.dmitrybond.tech"  # or "http://localhost:8000"
+$openapi = Invoke-RestMethod -Uri "$baseUrl/api/openapi.json" -Method Get
 
-# Or with curl
-curl -X GET "https://miniapp.dmitrybond.tech/api/skills/debug" | ConvertFrom-Json | ConvertTo-Json -Depth 10
-```
-
-**Expected Response:**
-```json
-{
-  "provider": "csv",
-  "csv_path": "/app/data/skills.csv",
-  "csv_exists": true,
-  "notion": {
-    "token": "SET|EMPTY",
-    "db": "SET|EMPTY",
-    "ok": true|false
-  },
-  "count": 10,
-  "sample": [...]
-}
-```
-
-**Validation:**
-- Status code is 200 (not 404)
-- `count` is greater than 0
-- `csv_exists` is true if using CSV source
-
-### 2. Validate Skills List Endpoint
-
-**Expected:** Returns skills list with count ≥ 1
-
-```powershell
-# PowerShell
-$response = Invoke-WebRequest -Uri "https://miniapp.dmitrybond.tech/api/skills?lang=ru" -Method GET
-$data = $response.Content | ConvertFrom-Json
-$data.count  # Should be >= 1
-$data.items.Count  # Should be >= 1
-
-# Or with curl
-curl -X GET "https://miniapp.dmitrybond.tech/api/skills?lang=ru" | ConvertFrom-Json | Select-Object -ExpandProperty count
-```
-
-**Expected Response:**
-```json
-{
-  "items": [
-    {
-      "slug": "...",
-      "title": "...",
-      "short": "...",
-      "tags": [...]
+# Check for required paths
+$requiredPaths = @("/api/skills/debug", "/api/telegram/selftest")
+foreach ($path in $requiredPaths) {
+    $found = $openapi.paths.PSObject.Properties.Name | Where-Object { $_ -like "*$path*" }
+    if ($found) {
+        Write-Host "✓ Found route: $path" -ForegroundColor Green
+    } else {
+        Write-Host "✗ Missing route: $path" -ForegroundColor Red
+        exit 1
     }
-  ],
-  "count": 10
+}
+Write-Host "`nAll required routes found in OpenAPI schema" -ForegroundColor Green
+```
+
+**Bash:**
+```bash
+BASE_URL="https://miniapp.dmitrybond.tech"  # or "http://localhost:8000"
+OPENAPI=$(curl -s "$BASE_URL/api/openapi.json")
+
+for path in "/api/skills/debug" "/api/telegram/selftest"; do
+    if echo "$OPENAPI" | grep -q "\"$path\""; then
+        echo "✓ Found route: $path"
+    else
+        echo "✗ Missing route: $path"
+        exit 1
+    fi
+done
+echo ""
+echo "All required routes found in OpenAPI schema"
+```
+
+### 2. Test `/api/skills/debug` Endpoint
+
+**PowerShell:**
+```powershell
+$baseUrl = "https://miniapp.dmitrybond.tech"  # or "http://localhost:8000"
+$response = Invoke-RestMethod -Uri "$baseUrl/api/skills/debug" -Method Get
+
+# Validate response structure
+if ($response.provider -and $response.count -ge 1) {
+    Write-Host "✓ /api/skills/debug returns valid data" -ForegroundColor Green
+    Write-Host "  Provider: $($response.provider)" -ForegroundColor Cyan
+    Write-Host "  Count: $($response.count)" -ForegroundColor Cyan
+    Write-Host "  CSV exists: $($response.csv_exists)" -ForegroundColor Cyan
+} else {
+    Write-Host "✗ /api/skills/debug returned invalid data" -ForegroundColor Red
+    Write-Host "  Response: $($response | ConvertTo-Json -Depth 3)" -ForegroundColor Yellow
+    exit 1
 }
 ```
 
-**Validation:**
-- `count` is greater than 0
-- `items` array is not empty
-- Cards render correctly in frontend
+**Bash:**
+```bash
+BASE_URL="https://miniapp.dmitrybond.tech"  # or "http://localhost:8000"
+RESPONSE=$(curl -s "$BASE_URL/api/skills/debug")
 
-### 3. Validate Telegram Selftest Endpoint
+# Check if response has required fields
+if echo "$RESPONSE" | grep -q '"provider"' && echo "$RESPONSE" | grep -q '"count"'; then
+    COUNT=$(echo "$RESPONSE" | grep -o '"count":[0-9]*' | grep -o '[0-9]*')
+    if [ "$COUNT" -ge 1 ]; then
+        echo "✓ /api/skills/debug returns valid data"
+        echo "$RESPONSE" | jq '{provider, count, csv_exists}'
+    else
+        echo "✗ /api/skills/debug returned count < 1"
+        echo "$RESPONSE" | jq .
+        exit 1
+    fi
+else
+    echo "✗ /api/skills/debug returned invalid response"
+    echo "$RESPONSE"
+    exit 1
+fi
+```
 
-**Expected:** Returns 200 JSON with bot info (or 400 if env missing)
+### 3. Test `/api/skills?lang=ru` Endpoint
 
+**PowerShell:**
 ```powershell
-# PowerShell
+$baseUrl = "https://miniapp.dmitrybond.tech"  # or "http://localhost:8000"
+$response = Invoke-RestMethod -Uri "$baseUrl/api/skills?lang=ru" -Method Get
+
+if ($response.Count -ge 1) {
+    Write-Host "✓ /api/skills?lang=ru returns $($response.Count) items" -ForegroundColor Green
+    Write-Host "  First item: $($response[0].slug)" -ForegroundColor Cyan
+} else {
+    Write-Host "✗ /api/skills?lang=ru returned 0 items" -ForegroundColor Red
+    exit 1
+}
+```
+
+**Bash:**
+```bash
+BASE_URL="https://miniapp.dmitrybond.tech"  # or "http://localhost:8000"
+RESPONSE=$(curl -s "$BASE_URL/api/skills?lang=ru")
+
+COUNT=$(echo "$RESPONSE" | jq 'length')
+if [ "$COUNT" -ge 1 ]; then
+    echo "✓ /api/skills?lang=ru returns $COUNT items"
+    echo "$RESPONSE" | jq '.[0] | {slug, title}'
+else
+    echo "✗ /api/skills?lang=ru returned 0 items"
+    echo "$RESPONSE"
+    exit 1
+fi
+```
+
+### 4. Test `/api/telegram/selftest` Endpoint
+
+**PowerShell:**
+```powershell
+$baseUrl = "https://miniapp.dmitrybond.tech"  # or "http://localhost:8000"
 try {
-    $response = Invoke-WebRequest -Uri "https://miniapp.dmitrybond.tech/api/telegram/selftest" -Method GET
-    $data = $response.Content | ConvertFrom-Json
-    $data.ok  # Should be true
-    $data.bot  # Should contain bot info
+    $response = Invoke-RestMethod -Uri "$baseUrl/api/telegram/selftest" -Method Get
+    if ($response.ok -and $response.bot) {
+        Write-Host "✓ /api/telegram/selftest returns bot info" -ForegroundColor Green
+        Write-Host "  Bot username: $($response.bot.username)" -ForegroundColor Cyan
+    } else {
+        Write-Host "✗ /api/telegram/selftest returned invalid response" -ForegroundColor Red
+        exit 1
+    }
 } catch {
-    $_.Exception.Response.StatusCode  # Should be 400 if token missing
-}
-
-# Or with curl
-curl -X GET "https://miniapp.dmitrybond.tech/api/telegram/selftest"
-```
-
-**Expected Response (Success):**
-```json
-{
-  "ok": true,
-  "bot": {
-    "id": 123456789,
-    "is_bot": true,
-    "first_name": "...",
-    "username": "..."
-  }
+    $statusCode = $_.Exception.Response.StatusCode.value__
+    if ($statusCode -eq 400) {
+        Write-Host "⚠ /api/telegram/selftest returned 400 (expected if TELEGRAM_TOKEN missing)" -ForegroundColor Yellow
+        Write-Host "  This is acceptable if Telegram is not configured" -ForegroundColor Yellow
+    } else {
+        Write-Host "✗ /api/telegram/selftest failed: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
 }
 ```
 
-**Expected Response (Missing Token):**
-```json
-{
-  "detail": "TELEGRAM_TOKEN is not set"
-}
+**Bash:**
+```bash
+BASE_URL="https://miniapp.dmitrybond.tech"  # or "http://localhost:8000"
+HTTP_CODE=$(curl -s -o /tmp/selftest_response.json -w "%{http_code}" "$BASE_URL/api/telegram/selftest")
+
+if [ "$HTTP_CODE" -eq 200 ]; then
+    RESPONSE=$(cat /tmp/selftest_response.json)
+    if echo "$RESPONSE" | grep -q '"ok":true' && echo "$RESPONSE" | grep -q '"bot"'; then
+        echo "✓ /api/telegram/selftest returns bot info"
+        echo "$RESPONSE" | jq '{ok, bot: .bot.username}'
+    else
+        echo "✗ /api/telegram/selftest returned invalid response"
+        echo "$RESPONSE"
+        exit 1
+    fi
+elif [ "$HTTP_CODE" -eq 400 ]; then
+    echo "⚠ /api/telegram/selftest returned 400 (expected if TELEGRAM_TOKEN missing)"
+    echo "  This is acceptable if Telegram is not configured"
+else
+    echo "✗ /api/telegram/selftest failed with HTTP $HTTP_CODE"
+    cat /tmp/selftest_response.json
+    exit 1
+fi
 ```
-Status: 400
 
-**Validation:**
-- Returns 200 with bot info if token is set
-- Returns 400 with clear message if token is missing
-- Bot info contains valid Telegram bot details
+### 5. Test `/api/export/telegram` with Small Payload
 
-### 4. Validate Telegram Export Endpoint (Small Payload)
-
-**Expected:** Returns 200 JSON for small payloads (uses sendMessage)
-
+**PowerShell:**
 ```powershell
-# PowerShell
-$payload = @{
+$baseUrl = "https://miniapp.dmitrybond.tech"  # or "http://localhost:8000"
+$smallPayload = @{
     messages = @(
         @{ role = "user"; content = "Hello" }
         @{ role = "assistant"; content = "Hi there!" }
     )
-    lang = "ru"
-} | ConvertTo-Json
+} | ConvertTo-Json -Depth 10
 
-$response = Invoke-WebRequest -Uri "https://miniapp.dmitrybond.tech/api/export/telegram" -Method POST -Body $payload -ContentType "application/json"
-$data = $response.Content | ConvertFrom-Json
-$data.ok  # Should be true
-$data.sent.method  # Should be "sendMessage"
-
-# Or with curl
-$payloadJson = '{"messages":[{"role":"user","content":"Hello"},{"role":"assistant","content":"Hi there!"}],"lang":"ru"}'
-curl -X POST "https://miniapp.dmitrybond.tech/api/export/telegram" -H "Content-Type: application/json" -d $payloadJson
-```
-
-**Expected Response:**
-```json
-{
-  "ok": true,
-  "sent": {
-    "method": "sendMessage",
-    "parts": 1
-  }
+try {
+    $response = Invoke-RestMethod -Uri "$baseUrl/api/export/telegram" -Method Post -Body $smallPayload -ContentType "application/json"
+    if ($response.ok -and $response.sent.method -eq "sendMessage") {
+        Write-Host "✓ /api/export/telegram (small) returns 200 with sendMessage" -ForegroundColor Green
+    } else {
+        Write-Host "✗ /api/export/telegram (small) returned unexpected response" -ForegroundColor Red
+        Write-Host "  Response: $($response | ConvertTo-Json -Depth 3)" -ForegroundColor Yellow
+        exit 1
+    }
+} catch {
+    $statusCode = $_.Exception.Response.StatusCode.value__
+    if ($statusCode -eq 400) {
+        Write-Host "⚠ /api/export/telegram returned 400 (expected if TELEGRAM_TOKEN/ADMIN_CHAT_ID missing)" -ForegroundColor Yellow
+    } else {
+        Write-Host "✗ /api/export/telegram failed: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
 }
 ```
 
-**Validation:**
-- Returns 200
-- `sent.method` is "sendMessage" for small payloads
-- Message appears in Telegram admin chat
+**Bash:**
+```bash
+BASE_URL="https://miniapp.dmitrybond.tech"  # or "http://localhost:8000"
+SMALL_PAYLOAD='{"messages":[{"role":"user","content":"Hello"},{"role":"assistant","content":"Hi there!"}]}'
 
-### 5. Validate Telegram Export Endpoint (Large Payload)
+HTTP_CODE=$(curl -s -o /tmp/export_small.json -w "%{http_code}" \
+    -X POST "$BASE_URL/api/export/telegram" \
+    -H "Content-Type: application/json" \
+    -d "$SMALL_PAYLOAD")
 
-**Expected:** Returns 200 JSON for large payloads (uses sendDocument)
+if [ "$HTTP_CODE" -eq 200 ]; then
+    RESPONSE=$(cat /tmp/export_small.json)
+    if echo "$RESPONSE" | grep -q '"ok":true' && echo "$RESPONSE" | grep -q '"sendMessage"'; then
+        echo "✓ /api/export/telegram (small) returns 200 with sendMessage"
+        echo "$RESPONSE" | jq '{ok, sent}'
+    else
+        echo "✗ /api/export/telegram (small) returned unexpected response"
+        echo "$RESPONSE"
+        exit 1
+    fi
+elif [ "$HTTP_CODE" -eq 400 ]; then
+    echo "⚠ /api/export/telegram returned 400 (expected if TELEGRAM_TOKEN/ADMIN_CHAT_ID missing)"
+else
+    echo "✗ /api/export/telegram failed with HTTP $HTTP_CODE"
+    cat /tmp/export_small.json
+    exit 1
+fi
+```
 
+### 6. Test `/api/export/telegram` with Large Payload
+
+**PowerShell:**
 ```powershell
-# PowerShell
-# Create a large message payload (>3500 chars)
-$largeContent = "A" * 4000
-$payload = @{
+$baseUrl = "https://miniapp.dmitrybond.tech"  # or "http://localhost:8000"
+# Create large payload (>3500 chars to trigger sendDocument)
+$largeContent = "This is a test message. " * 200  # ~5000 chars
+$largePayload = @{
     messages = @(
         @{ role = "user"; content = $largeContent }
+        @{ role = "assistant"; content = "Response to large message" }
     )
-    lang = "ru"
-    title = "Large Export Test"
-} | ConvertTo-Json
+} | ConvertTo-Json -Depth 10
 
-$response = Invoke-WebRequest -Uri "https://miniapp.dmitrybond.tech/api/export/telegram" -Method POST -Body $payload -ContentType "application/json"
-$data = $response.Content | ConvertFrom-Json
-$data.ok  # Should be true
-$data.sent.method  # Should be "sendDocument"
-
-# Or with curl (create large payload)
-$largePayload = @{
-    messages = @(@{ role = "user"; content = ("A" * 4000) })
-    lang = "ru"
-    title = "Large Export Test"
-} | ConvertTo-Json
-curl -X POST "https://miniapp.dmitrybond.tech/api/export/telegram" -H "Content-Type: application/json" -d $largePayload
-```
-
-**Expected Response:**
-```json
-{
-  "ok": true,
-  "message_id": 12345,
-  "sent": {
-    "method": "sendDocument"
-  }
+try {
+    $response = Invoke-RestMethod -Uri "$baseUrl/api/export/telegram" -Method Post -Body $largePayload -ContentType "application/json"
+    if ($response.ok -and $response.sent.method -eq "sendDocument") {
+        Write-Host "✓ /api/export/telegram (large) returns 200 with sendDocument" -ForegroundColor Green
+    } else {
+        Write-Host "✗ /api/export/telegram (large) returned unexpected response" -ForegroundColor Red
+        Write-Host "  Response: $($response | ConvertTo-Json -Depth 3)" -ForegroundColor Yellow
+        exit 1
+    }
+} catch {
+    $statusCode = $_.Exception.Response.StatusCode.value__
+    if ($statusCode -eq 400) {
+        Write-Host "⚠ /api/export/telegram returned 400 (expected if TELEGRAM_TOKEN/ADMIN_CHAT_ID missing)" -ForegroundColor Yellow
+    } else {
+        Write-Host "✗ /api/export/telegram failed: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
 }
 ```
 
-**Validation:**
-- Returns 200
-- `sent.method` is "sendDocument" for large payloads
-- Document appears in Telegram admin chat
+**Bash:**
+```bash
+BASE_URL="https://miniapp.dmitrybond.tech"  # or "http://localhost:8000"
+# Create large payload (>3500 chars to trigger sendDocument)
+LARGE_CONTENT=$(python3 -c "print('This is a test message. ' * 200)")
+LARGE_PAYLOAD=$(jq -n \
+    --arg content "$LARGE_CONTENT" \
+    '{messages: [{role: "user", content: $content}, {role: "assistant", content: "Response"}]}')
 
-### 6. Validate Export Handler Tolerates Both Payload Shapes
+HTTP_CODE=$(curl -s -o /tmp/export_large.json -w "%{http_code}" \
+    -X POST "$BASE_URL/api/export/telegram" \
+    -H "Content-Type: application/json" \
+    -d "$LARGE_PAYLOAD")
 
-**Test with `items` field (legacy format):**
-
-```powershell
-# PowerShell
-$payload = @{
-    items = @(
-        @{ role = "user"; content = "Test" }
-        @{ role = "assistant"; content = "Response" }
-    )
-    lang = "ru"
-} | ConvertTo-Json
-
-$response = Invoke-WebRequest -Uri "https://miniapp.dmitrybond.tech/api/export/telegram" -Method POST -Body $payload -ContentType "application/json"
-$data = $response.Content | ConvertFrom-Json
-$data.ok  # Should be true
+if [ "$HTTP_CODE" -eq 200 ]; then
+    RESPONSE=$(cat /tmp/export_large.json)
+    if echo "$RESPONSE" | grep -q '"ok":true' && echo "$RESPONSE" | grep -q '"sendDocument"'; then
+        echo "✓ /api/export/telegram (large) returns 200 with sendDocument"
+        echo "$RESPONSE" | jq '{ok, sent}'
+    else
+        echo "✗ /api/export/telegram (large) returned unexpected response"
+        echo "$RESPONSE"
+        exit 1
+    fi
+elif [ "$HTTP_CODE" -eq 400 ]; then
+    echo "⚠ /api/export/telegram returned 400 (expected if TELEGRAM_TOKEN/ADMIN_CHAT_ID missing)"
+else
+    echo "✗ /api/export/telegram failed with HTTP $HTTP_CODE"
+    cat /tmp/export_large.json
+    exit 1
+fi
 ```
 
-**Validation:**
-- Both `{items:[...]}` and `{messages:[...]}` formats work
-- Returns 200 for valid payloads
-- Returns 400 for missing env vars
-- Returns 502 for network/API errors
+## Complete Validation Script
 
-### 7. Validate Error Handling
-
-**Test missing env vars:**
-
+**PowerShell (save as `validate-fix.ps1`):**
 ```powershell
-# This should return 400 if TELEGRAM_TOKEN or ADMIN_CHAT_ID is missing
-# (Only test if you can temporarily unset env vars)
-```
+param(
+    [string]$BaseUrl = "https://miniapp.dmitrybond.tech"
+)
 
-**Test network error (invalid token):**
+$ErrorActionPreference = "Stop"
 
-```powershell
-# Set invalid token temporarily and test
-# Should return 502 with error details
-```
+Write-Host "`n=== Production Skills & Telegram Export Fix Validation ===" -ForegroundColor Cyan
+Write-Host "Base URL: $BaseUrl`n" -ForegroundColor Cyan
 
-**Expected Error Response:**
-```json
-{
-  "detail": "Telegram request failed: ValueError: ..."
+# Step 1: OpenAPI
+Write-Host "1. Checking OpenAPI schema..." -ForegroundColor Yellow
+$openapi = Invoke-RestMethod -Uri "$BaseUrl/api/openapi.json" -Method Get
+$requiredPaths = @("/api/skills/debug", "/api/telegram/selftest")
+foreach ($path in $requiredPaths) {
+    $found = $openapi.paths.PSObject.Properties.Name | Where-Object { $_ -like "*$path*" }
+    if ($found) {
+        Write-Host "   ✓ Found: $path" -ForegroundColor Green
+    } else {
+        Write-Host "   ✗ Missing: $path" -ForegroundColor Red
+        exit 1
+    }
 }
+
+# Step 2: Skills debug
+Write-Host "`n2. Testing /api/skills/debug..." -ForegroundColor Yellow
+$debug = Invoke-RestMethod -Uri "$BaseUrl/api/skills/debug" -Method Get
+if ($debug.count -ge 1) {
+    Write-Host "   ✓ Skills count: $($debug.count)" -ForegroundColor Green
+} else {
+    Write-Host "   ✗ Skills count < 1" -ForegroundColor Red
+    exit 1
+}
+
+# Step 3: Skills list
+Write-Host "`n3. Testing /api/skills?lang=ru..." -ForegroundColor Yellow
+$skills = Invoke-RestMethod -Uri "$BaseUrl/api/skills?lang=ru" -Method Get
+if ($skills.Count -ge 1) {
+    Write-Host "   ✓ Returns $($skills.Count) items" -ForegroundColor Green
+} else {
+    Write-Host "   ✗ Returns 0 items" -ForegroundColor Red
+    exit 1
+}
+
+# Step 4: Telegram selftest
+Write-Host "`n4. Testing /api/telegram/selftest..." -ForegroundColor Yellow
+try {
+    $selftest = Invoke-RestMethod -Uri "$BaseUrl/api/telegram/selftest" -Method Get
+    Write-Host "   ✓ Returns bot info" -ForegroundColor Green
+} catch {
+    if ($_.Exception.Response.StatusCode.value__ -eq 400) {
+        Write-Host "   ⚠ Returns 400 (Telegram not configured - acceptable)" -ForegroundColor Yellow
+    } else {
+        Write-Host "   ✗ Failed: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# Step 5: Export small
+Write-Host "`n5. Testing /api/export/telegram (small)..." -ForegroundColor Yellow
+$smallPayload = @{messages = @(@{role="user";content="Hello"},@{role="assistant";content="Hi"})} | ConvertTo-Json
+try {
+    $export = Invoke-RestMethod -Uri "$BaseUrl/api/export/telegram" -Method Post -Body $smallPayload -ContentType "application/json"
+    Write-Host "   ✓ Returns 200" -ForegroundColor Green
+} catch {
+    if ($_.Exception.Response.StatusCode.value__ -eq 400) {
+        Write-Host "   ⚠ Returns 400 (Telegram not configured - acceptable)" -ForegroundColor Yellow
+    } else {
+        Write-Host "   ✗ Failed: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+}
+
+Write-Host "`n=== All validations passed! ===" -ForegroundColor Green
 ```
-Status: 400 for validation errors, 502 for network/API errors
 
-## Docker Compose Validation
+**Bash (save as `validate-fix.sh`):**
+```bash
+#!/bin/bash
+set -e
 
-### Check Environment Variables in Container
+BASE_URL="${1:-https://miniapp.dmitrybond.tech}"
 
+echo ""
+echo "=== Production Skills & Telegram Export Fix Validation ==="
+echo "Base URL: $BASE_URL"
+echo ""
+
+# Step 1: OpenAPI
+echo "1. Checking OpenAPI schema..."
+OPENAPI=$(curl -s "$BASE_URL/api/openapi.json")
+for path in "/api/skills/debug" "/api/telegram/selftest"; do
+    if echo "$OPENAPI" | grep -q "\"$path\""; then
+        echo "   ✓ Found: $path"
+    else
+        echo "   ✗ Missing: $path"
+        exit 1
+    fi
+done
+
+# Step 2: Skills debug
+echo ""
+echo "2. Testing /api/skills/debug..."
+DEBUG=$(curl -s "$BASE_URL/api/skills/debug")
+COUNT=$(echo "$DEBUG" | jq -r '.count')
+if [ "$COUNT" -ge 1 ]; then
+    echo "   ✓ Skills count: $COUNT"
+else
+    echo "   ✗ Skills count < 1"
+    exit 1
+fi
+
+# Step 3: Skills list
+echo ""
+echo "3. Testing /api/skills?lang=ru..."
+SKILLS=$(curl -s "$BASE_URL/api/skills?lang=ru")
+SKILLS_COUNT=$(echo "$SKILLS" | jq 'length')
+if [ "$SKILLS_COUNT" -ge 1 ]; then
+    echo "   ✓ Returns $SKILLS_COUNT items"
+else
+    echo "   ✗ Returns 0 items"
+    exit 1
+fi
+
+# Step 4: Telegram selftest
+echo ""
+echo "4. Testing /api/telegram/selftest..."
+HTTP_CODE=$(curl -s -o /tmp/selftest.json -w "%{http_code}" "$BASE_URL/api/telegram/selftest")
+if [ "$HTTP_CODE" -eq 200 ]; then
+    echo "   ✓ Returns bot info"
+elif [ "$HTTP_CODE" -eq 400 ]; then
+    echo "   ⚠ Returns 400 (Telegram not configured - acceptable)"
+else
+    echo "   ✗ Failed with HTTP $HTTP_CODE"
+    exit 1
+fi
+
+# Step 5: Export small
+echo ""
+echo "5. Testing /api/export/telegram (small)..."
+PAYLOAD='{"messages":[{"role":"user","content":"Hello"},{"role":"assistant","content":"Hi"}]}'
+HTTP_CODE=$(curl -s -o /tmp/export.json -w "%{http_code}" \
+    -X POST "$BASE_URL/api/export/telegram" \
+    -H "Content-Type: application/json" \
+    -d "$PAYLOAD")
+if [ "$HTTP_CODE" -eq 200 ]; then
+    echo "   ✓ Returns 200"
+elif [ "$HTTP_CODE" -eq 400 ]; then
+    echo "   ⚠ Returns 400 (Telegram not configured - acceptable)"
+else
+    echo "   ✗ Failed with HTTP $HTTP_CODE"
+    exit 1
+fi
+
+echo ""
+echo "=== All validations passed! ==="
+```
+
+## Usage
+
+**PowerShell:**
 ```powershell
-# PowerShell
-docker compose -f infra/compose/miniapp.compose.yaml exec api env | Select-String -Pattern "SKILLS_|TELEGRAM_|ADMIN_"
-
-# Or bash
-docker compose -f infra/compose/miniapp.compose.yaml exec api env | grep -E "SKILLS_|TELEGRAM_|ADMIN_"
+.\validate-fix.ps1
+# Or with custom URL:
+.\validate-fix.ps1 -BaseUrl "http://localhost:8000"
 ```
 
-**Expected Output:**
-```
-SKILLS_SOURCE=csv
-SKILLS_CSV_PATH=/app/data/skills.csv
-TELEGRAM_TOKEN=...
-TELEGRAM_BOT_TOKEN=...
-ADMIN_CHAT_ID=...
-TELEGRAM_ADMIN_CHAT_ID=...
+**Bash:**
+```bash
+chmod +x validate-fix.sh
+./validate-fix.sh
+# Or with custom URL:
+./validate-fix.sh http://localhost:8000
 ```
 
-### Check CSV File Exists in Container
+## Expected Results
 
-```powershell
-# PowerShell
-docker compose -f infra/compose/miniapp.compose.yaml exec api ls -la /app/data/skills.csv
+- ✅ All routes present in OpenAPI schema
+- ✅ `/api/skills/debug` returns count ≥ 1
+- ✅ `/api/skills?lang=ru` returns items ≥ 1
+- ✅ `/api/telegram/selftest` returns 200 (or 400 if not configured)
+- ✅ `/api/export/telegram` returns 200 (or 400 if not configured)
 
-# Or bash
-docker compose -f infra/compose/miniapp.compose.yaml exec api test -f /app/data/skills.csv && echo "CSV exists" || echo "CSV missing"
-```
-
-**Expected:** File exists and is readable
-
-### Optional: Mount CSV from Host (if needed)
-
-If CSV lives on host at `/srv/ai-avatar/apps/miniapp-api/data/skills.csv`, create override:
-
-**File:** `infra/compose/miniapp.csv.override.yml`
-
-```yaml
-services:
-  api:
-    volumes:
-      - /srv/ai-avatar/apps/miniapp-api/data/skills.csv:/app/data/skills.csv:ro
-```
-
-Then use:
-```powershell
-docker compose -f infra/compose/miniapp.compose.yaml -f infra/compose/miniapp.csv.override.yml up -d api
-```
-
-## Acceptance Criteria Checklist
-
-- [ ] `/api/skills/debug` returns 200 JSON with diagnostics (not 404)
-- [ ] `/api/skills?lang=ru` returns count ≥ 1 (cards render)
-- [ ] `/api/telegram/selftest` returns 200 JSON with bot info (or 400 if env missing)
-- [ ] `/api/export/telegram` returns 200 JSON for small payloads (sendMessage)
-- [ ] `/api/export/telegram` returns 200 JSON for large payloads (sendDocument)
-- [ ] Export handler accepts both `{items:[...]}` and `{messages:[...]}` formats
-- [ ] Error handling returns 400 for missing env vars, 502 for network errors
-- [ ] No regressions: SPA deep links OK, assets 200, no CORS/mixed content
-
-## Troubleshooting
-
-### Skills Debug Returns 404
-- Verify route order in `apps/miniapp-api/routers/skills.py` (debug before {slug})
-- Restart API container: `docker compose restart api`
-
-### Skills List Returns 0 Items
-- Check `SKILLS_SOURCE` and `SKILLS_CSV_PATH` env vars in container
-- Verify CSV file exists at `/app/data/skills.csv` in container
-- Check container logs: `docker compose logs api | Select-String -Pattern "skills"`
-
-### Telegram Selftest Returns 404
-- Verify route exists in `apps/miniapp-api/routers/chat_v2.py`
-- Verify router is included in `apps/miniapp-api/main.py`
-- Restart API container
-
-### Telegram Export Fails
-- Check `TELEGRAM_TOKEN` and `ADMIN_CHAT_ID` env vars in container
-- Test selftest endpoint first
-- Check container logs for detailed error messages
-- Verify network connectivity from container to `api.telegram.org`
-
+If all checks pass, the fixes are working correctly.

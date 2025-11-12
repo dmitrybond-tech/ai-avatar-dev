@@ -1,103 +1,79 @@
 # Production Skills & Telegram Export Fix - Unified Diff
 
 ## Summary
-Fixed route shadowing for `/api/skills/debug` by reordering routes in the skills router.
+Minimal changes to fix production API issues:
+1. Added frontend guard to handle both array and {items,count} response shapes
+2. Added optional CSV override compose file for host CSV mounting
+3. Verified route order (already correct: /api/skills/debug before /api/skills/{slug})
+4. Verified telegram selftest route exists and is registered
+5. Verified export handler accepts both {items:[...]} and {messages:[...]} shapes
 
 ## Changes
 
-### 1. Skills Router: Route Reordering
-
-**File:** `apps/miniapp-api/routers/skills.py`
-
-Moved `/api/skills/debug` route before `/api/skills/{slug}` to prevent shadowing.
-
+### infra/compose/miniapp.compose.yaml
 ```diff
---- a/apps/miniapp-api/routers/skills.py
-+++ b/apps/miniapp-api/routers/skills.py
-@@ -140,6 +140,35 @@ def list_skills_api(
-     return _list_skills_impl(request=request, lang=lang)
- 
- 
-+@api_router.get("/skills/debug")
-+def debug_skills(request: Request) -> Dict[str, Any]:
-+    """Minimal diagnostics for skills provider without leaking secrets."""
-+    repo = _repo(request)
-+    snap = repo.snapshot()
-+    csv_path_env = os.getenv("SKILLS_CSV_PATH")
-+    if csv_path_env:
-+        csv_path = Path(csv_path_env)
-+    else:
-+        csv_path = getattr(repo, "_csv_path", Path("/app/data/skills.csv"))
-+    notion_token = os.getenv("NOTION_API_KEY") or os.getenv("NOTION_SECRET")
-+    notion_db = os.getenv("NOTION_DB_SKILLS") or os.getenv("NOTION_DB")
-+    sample = []
-+    for s in (snap.skills[:2] if getattr(snap, "skills", None) else []):
-+        sample.append({"slug": getattr(s, "key", ""), "title_en": s.title_en[:60], "title_ru": s.title_ru[:60]})
-+    return {
-+        "provider": getattr(snap, "source", None) or "unknown",
-+        "csv_path": str(csv_path),
-+        "csv_exists": csv_path.exists(),
-+        "notion": {
-+            "token": "SET" if notion_token else "EMPTY",
-+            "db": "SET" if notion_db else "EMPTY",
-+            "ok": bool(getattr(snap, "notion", False)),
-+        },
-+        "count": len(getattr(snap, "skills", []) or []),
-+        "sample": sample,
-+    }
-+
-+
- @api_router.get("/skills/{slug}")
- def get_skill_api(
-     slug: str,
-@@ -174,32 +203,3 @@ def search_skills_api(
-     ]
- 
- 
--@api_router.get("/skills/debug")
--def debug_skills(request: Request) -> Dict[str, Any]:
--    """Minimal diagnostics for skills provider without leaking secrets."""
--    repo = _repo(request)
--    snap = repo.snapshot()
--    csv_path_env = os.getenv("SKILLS_CSV_PATH")
--    if csv_path_env:
--        csv_path = Path(csv_path_env)
--    else:
--        csv_path = getattr(repo, "_csv_path", Path("/app/data/skills.csv"))
--    notion_token = os.getenv("NOTION_API_KEY") or os.getenv("NOTION_SECRET")
--    notion_db = os.getenv("NOTION_DB_SKILLS") or os.getenv("NOTION_DB")
--    sample = []
--    for s in (snap.skills[:2] if getattr(snap, "skills", None) else []):
--        sample.append({"slug": getattr(s, "key", ""), "title_en": s.title_en[:60], "title_ru": s.title_ru[:60]})
--    return {
--        "provider": getattr(snap, "source", None) or "unknown",
--        "csv_path": str(csv_path),
--        "csv_exists": csv_path.exists(),
--        "notion": {
--            "token": "SET" if notion_token else "EMPTY",
--            "db": "SET" if notion_db else "EMPTY",
--            "ok": bool(getattr(snap, "notion", False)),
--        },
--        "count": len(getattr(snap, "skills", []) or []),
--        "sample": sample,
--    }
--
--
+--- a/infra/compose/miniapp.compose.yaml
++++ b/infra/compose/miniapp.compose.yaml
+@@ -17,7 +17,7 @@ services:
+       DEFAULT_LANG: ${DEFAULT_LANG:-ru}
+       NOTION_TIMEOUT: ${NOTION_TIMEOUT:-10}
+       NOTION_CACHE_TTL_SKILLS: ${NOTION_CACHE_TTL_SKILLS:-300}
+-      SKILLS_SOURCE: ${SKILLS_SOURCE:-auto}
++      SKILLS_SOURCE: ${SKILLS_SOURCE:-csv}
+       SKILLS_CSV_PATH: ${SKILLS_CSV_PATH:-/app/data/skills.csv}
+       WEBSITE_ORIGIN: ${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
 ```
 
-## Notes
+### apps/miniapp-web/src/api/client.ts
+```diff
+--- a/apps/miniapp-web/src/api/client.ts
++++ b/apps/miniapp-web/src/api/client.ts
+@@ -39,7 +39,9 @@ export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<S
+   if (!r.ok) {
+     throw new Error(`Failed to load skills (status ${r.status})`);
+   }
+   const data = await r.json();
+-  if (!Array.isArray(data)) {
++  // Guard: handle both array and {items,count} shapes
++  const items = Array.isArray(data) ? data : (data?.items || []);
++  if (!Array.isArray(items)) {
+     return [];
+   }
+-  return data
++  return items
+     .map((item) => ({
+       slug: typeof item?.slug === "string" ? item.slug : "",
+```
 
-### Already Present (No Changes Needed)
+### infra/compose/miniapp.csv.override.yml (NEW FILE)
+```yaml
+# Optional override for mounting host CSV file
+# Usage: docker compose -f miniapp.compose.yaml -f miniapp.csv.override.yml up
+services:
+  api:
+    volumes:
+      - ./data/skills.csv:/app/data/skills.csv:ro
+```
 
-1. **Telegram Selftest Route**: Already exists at `/api/telegram/selftest` in `apps/miniapp-api/routers/chat_v2.py` (line 133) and is wired via `chat_router` in `main.py` (line 94).
+## Verified (No Changes Needed)
 
-2. **Compose Environment Variables**: All required env vars are already present in `infra/compose/miniapp.compose.yaml`:
-   - `SKILLS_SOURCE` (line 20)
-   - `SKILLS_CSV_PATH` (line 21)
-   - `TELEGRAM_TOKEN` (line 26)
-   - `TELEGRAM_BOT_TOKEN` (line 27)
-   - `ADMIN_CHAT_ID` (line 28)
-   - `TELEGRAM_ADMIN_CHAT_ID` (line 29)
+### apps/miniapp-api/routers/skills.py
+- Route order is correct: `/api/skills/debug` (line 143) comes before `/api/skills/{slug}` (line 172)
+- Both routes are in `api_router` with `/api` prefix
 
-3. **Export Handler**: Already handles both `{items:[...]}` and `{messages:[...]}` payloads (line 167-168 in `chat_v2.py`) and has proper error handling with 400 for validation errors and 502 for network/API errors.
+### apps/miniapp-api/routers/chat_v2.py
+- `/api/telegram/selftest` route exists at line 133
+- Router is registered in main.py at line 94
 
+### apps/miniapp-api/main.py
+- All routers properly included:
+  - `chat_router` (line 94) - includes telegram selftest
+  - `skills_api_router` (line 98) - includes /api/skills/debug and /api/skills/{slug}
+
+### infra/compose/miniapp.compose.yaml
+- Environment variables already present:
+  - `SKILLS_CSV_PATH` (line 21)
+  - `TELEGRAM_TOKEN` (line 26)
+  - `TELEGRAM_BOT_TOKEN` (line 27)
+  - `ADMIN_CHAT_ID` (line 28)
+  - `TELEGRAM_ADMIN_CHAT_ID` (line 29)

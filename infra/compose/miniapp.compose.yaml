@@ -17,7 +17,7 @@ services:
       DEFAULT_LANG: ${DEFAULT_LANG:-ru}
       NOTION_TIMEOUT: ${NOTION_TIMEOUT:-10}
       NOTION_CACHE_TTL_SKILLS: ${NOTION_CACHE_TTL_SKILLS:-300}
-      SKILLS_SOURCE: ${SKILLS_SOURCE:-auto}
+      SKILLS_SOURCE: ${SKILLS_SOURCE:-csv}
       SKILLS_CSV_PATH: ${SKILLS_CSV_PATH:-/app/data/skills.csv}
       WEBSITE_ORIGIN: ${WEBSITE_ORIGIN:-https://miniapp.dmitrybond.tech}
       UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}

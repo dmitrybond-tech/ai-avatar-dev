@@ -39,10 +39,12 @@ export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<Ski
     throw new Error(`Failed to load skills (status ${r.status})`);
   }
   const data = await r.json();
-  if (!Array.isArray(data)) {
+  // Guard: handle both array and {items,count} shapes
+  const items = Array.isArray(data) ? data : (data?.items || []);
+  if (!Array.isArray(items)) {
     return [];
   }
-  return data
+  return items
     .map((item) => ({
       slug: typeof item?.slug === "string" ? item.slug : "",
       title: typeof item?.title === "string" ? item.title : "",

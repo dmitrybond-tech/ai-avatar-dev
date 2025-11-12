@@ -1,0 +1,6 @@
+# Optional override for mounting host CSV file
+# Usage: docker compose -f miniapp.compose.yaml -f miniapp.csv.override.yml up
+services:
+  api:
+    volumes:
+      - ./data/skills.csv:/app/data/skills.csv:ro
