@@ -21,6 +21,7 @@ const titles: Record<Lang, string> = {
 export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail }: SkillsPageProps) {
   const [skills, setSkills] = useState<SkillCard[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<"loading" | "success" | "error">("loading")
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [reloadToken, setReloadToken] = useState(0)
   const [detailsCache, setDetailsCache] = useState<Record<string, SkillDetail>>({})
@@ -35,16 +36,21 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
     const controller = new AbortController()
     setSkills(null)
     setError(null)
+    setStatus("loading")
 
     getSkills(lang, controller.signal)
       .then((list) => {
         if (!active) return
         setSkills(list)
+        setStatus("success")
+        // Temporary debug logging
+        console.debug('[skills:list]', list.slice(0, 2))
       })
       .catch((err) => {
         if (!active) return
         setError(err instanceof Error ? err.message : String(err))
-        setSkills([])
+        setStatus("error")
+        // Don't set skills to [] on error - keep null to distinguish from empty success
       })
 
     return () => {
@@ -164,7 +170,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
   }, [selectedSlug])
 
   const listContent = useMemo(() => {
-    if (error) {
+    if (status === "error") {
       return (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           <p>{lang === 'ru' ? 'Не удалось загрузить навыки.' : 'Failed to load skills.'}</p>
@@ -180,7 +186,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
       )
     }
 
-    if (!skills) {
+    if (status === "loading" || !skills) {
       return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {Array.from({ length: 4 }).map((_, index) => (
@@ -190,7 +196,8 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
       )
     }
 
-    if (!skills.length) {
+    // Only show "NoSkills" when status is success and list is empty (200 + [])
+    if (status === "success" && skills.length === 0) {
       return (
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
           {lang === 'ru' ? 'Пока нет навыков для отображения.' : 'No skills are published yet.'}
@@ -230,7 +237,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
         })}
       </section>
     )
-  }, [skills, error, lang, handleSelect, selectedSlug, drawerOpen, handleRetry])
+  }, [skills, status, error, lang, handleSelect, selectedSlug, drawerOpen, handleRetry])
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-4">

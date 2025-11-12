@@ -43,7 +43,11 @@ export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<Ski
   const data = await r.json();
   // Guard: handle both array and {items,count} shapes
   const items = Array.isArray(data) ? data : (data?.items || []);
-  return mapList(items);
+  // Temporary debug logging
+  console.debug('[skills:raw]', items.slice(0, 2));
+  const mapped = mapList(items);
+  console.debug('[skills:mapped]', mapped.slice(0, 2));
+  return mapped;
 }
 
 export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortSignal): Promise<SkillDetail> {
