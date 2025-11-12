@@ -179,20 +179,39 @@ def debug_skills(request: Request) -> Dict[str, Any]:
     else:
         csv_path = Path("/app/data/skills.csv")
     
+    errors: List[str] = []
+    csv_ok = False
+    
     if source == "csv":
+        # Try to load CSV directly to check if it works
+        try:
+            loader = get_loader()
+            csv_skills = loader.load_skills()
+            csv_ok = len(csv_skills) > 0
+            if not csv_ok:
+                errors.append("CSV loaded but returned 0 skills")
+        except Exception as exc:
+            errors.append(f"CSV load failed: {str(exc)[:200]}")
+            csv_ok = False
+        
+        # Load with fallback
         skills = _load_skills_with_fallback()
-        actual_source = "fallback" if len(get_loader().load_skills()) == 0 else "csv"
+        actual_source = "fallback" if not csv_ok else "csv"
+        
         sample = []
         for s in skills[:2]:
             sample.append({
                 "slug": s.key,
                 "title": s.title("en")[:60],
             })
+        
         return {
             "source": actual_source,
             "count": len(skills),
             "csv_path": str(csv_path),
             "csv_exists": csv_path.exists(),
+            "csv_ok": csv_ok,
+            "errors": errors if errors else None,
             "sample": sample,
         }
     else:
@@ -200,14 +219,27 @@ def debug_skills(request: Request) -> Dict[str, Any]:
         snap = repo.snapshot()
         notion_token = os.getenv("NOTION_API_KEY") or os.getenv("NOTION_SECRET")
         notion_db = os.getenv("NOTION_DB_SKILLS") or os.getenv("NOTION_DB")
+        
+        # Check CSV status even in non-CSV mode
+        try:
+            loader = get_loader()
+            csv_skills = loader.load_skills()
+            csv_ok = len(csv_skills) > 0
+        except Exception as exc:
+            errors.append(f"CSV check failed: {str(exc)[:200]}")
+            csv_ok = False
+        
         sample = []
         for s in (snap.skills[:2] if getattr(snap, "skills", None) else []):
             sample.append({"slug": getattr(s, "key", ""), "title_en": s.title_en[:60], "title_ru": s.title_ru[:60]})
+        
         return {
             "source": getattr(snap, "source", None) or "unknown",
             "count": len(getattr(snap, "skills", []) or []),
             "csv_path": str(csv_path),
             "csv_exists": csv_path.exists(),
+            "csv_ok": csv_ok,
+            "errors": errors if errors else None,
             "notion": {
                 "token": "SET" if notion_token else "EMPTY",
                 "db": "SET" if notion_db else "EMPTY",

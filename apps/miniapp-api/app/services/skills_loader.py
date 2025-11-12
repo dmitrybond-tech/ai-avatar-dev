@@ -9,6 +9,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Dict, List, Optional
 
+import pandas as pd
 from rapidfuzz import process
 
 from ..core import env as env_utils
@@ -187,54 +188,69 @@ class SkillsLoader:
             return None
 
     def _load_csv(self) -> List[SkillRecord]:
-        """Load skills from CSV with UTF-8 BOM handling and robust parsing."""
+        """Load skills from CSV with UTF-8 BOM handling and robust parsing using pandas."""
         csv_path = self._csv_path
         if not csv_path.exists():
             logger.warning("Skills CSV path %s does not exist", csv_path)
             return []
 
         items: List[SkillRecord] = []
+        encoding_used = None
         try:
             # Try UTF-8 with BOM first, then fallback to UTF-8
             encodings = ["utf-8-sig", "utf-8"]
-            content = None
-            encoding_used = None
+            df = None
 
             for enc in encodings:
                 try:
-                    with csv_path.open(encoding=enc, newline="") as f:
-                        content = f.read()
-                        encoding_used = enc
-                        break
+                    # Use pandas with python engine for robust handling of quoted multiline cells
+                    # on_bad_lines parameter available in pandas >= 1.3.0
+                    read_kwargs = {
+                        "encoding": enc,
+                        "engine": "python",
+                        "quotechar": '"',
+                        "skipinitialspace": True,
+                    }
+                    # Try with on_bad_lines for newer pandas, fallback to error_bad_lines for older
+                    try:
+                        df = pd.read_csv(csv_path, **read_kwargs, on_bad_lines="skip")
+                    except TypeError:
+                        # Fallback for older pandas versions
+                        df = pd.read_csv(csv_path, **read_kwargs, error_bad_lines=False, warn_bad_lines=False)
+                    encoding_used = enc
+                    break
                 except UnicodeDecodeError:
                     continue
+                except Exception as exc:
+                    logger.warning("Failed to read CSV %s with encoding %s: %s", csv_path, enc, exc)
+                    continue
 
-            if content is None:
-                logger.error("Failed to decode CSV %s with any encoding", csv_path)
+            if df is None or df.empty:
+                logger.error("Failed to decode CSV %s with any encoding or CSV is empty", csv_path)
                 return []
 
-            # Parse CSV content
-            import io
+            # Normalize column names to lowercase for case-insensitive matching
+            df.columns = df.columns.str.lower().str.strip()
 
-            reader = csv.DictReader(io.StringIO(content))
-            normalized_rows = []
-            for row in reader:
-                normalized = {str(k).lower(): v for k, v in row.items()}
-                normalized_rows.append(normalized)
+            # Convert DataFrame to list of dicts
+            normalized_rows = df.to_dict("records")
 
             for i, row in enumerate(normalized_rows):
-                key = _h(row, "key") or f"skill_{i}"
-                title_en = _h(row, "title_en") or key
-                title_ru = _h(row, "title_ru") or title_en
-                short_en = _h(row, "short_en")
-                short_ru = _h(row, "short_ru") or short_en
-                tags = _split_list(_h(row, "tags"))
-                bullets_en = _split_lines(_h(row, "bullets_en"))
-                bullets_ru = _split_lines(_h(row, "bullets_ru"))
-                examples_en = _split_lines(_h(row, "examples_en"))
-                examples_ru = _split_lines(_h(row, "examples_ru"))
-                weight = _to_int(_h(row, "weight"), 0)
-                pinned = _to_bool(_h(row, "pinned"))
+                # Convert all values to strings, handling NaN
+                row_str = {str(k).lower(): (str(v) if pd.notna(v) else "") for k, v in row.items()}
+
+                key = _h(row_str, "key") or f"skill_{i}"
+                title_en = _h(row_str, "title_en") or key
+                title_ru = _h(row_str, "title_ru") or title_en
+                short_en = _h(row_str, "short_en")
+                short_ru = _h(row_str, "short_ru") or short_en
+                tags = _split_list(_h(row_str, "tags"))
+                bullets_en = _split_lines(_h(row_str, "bullets_en"))
+                bullets_ru = _split_lines(_h(row_str, "bullets_ru"))
+                examples_en = _split_lines(_h(row_str, "examples_en"))
+                examples_ru = _split_lines(_h(row_str, "examples_ru"))
+                weight = _to_int(_h(row_str, "weight"), 0)
+                pinned = _to_bool(_h(row_str, "pinned"))
 
                 if not (title_en or title_ru):
                     continue
@@ -256,7 +272,7 @@ class SkillsLoader:
                     )
                 )
         except Exception as exc:
-            logger.error("Failed to read CSV %s: %s", csv_path, exc, exc_info=True)
+            logger.error("skills_csv_read_failed: Failed to read CSV %s: %s", csv_path, exc, exc_info=True)
             return []
 
         # Stable ordering: pinned desc, weight desc, key asc
