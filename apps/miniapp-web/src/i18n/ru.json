@@ -15,7 +15,14 @@
     "smartLLMOff": "Выкл",
     "smartLLMUnavailable": "Недоступно",
     "modeLLM": "Режим: LLM",
-    "modeSkills": "Режим: Навыки"
+    "modeSkills": "Режим: Навыки",
+    "exportToTelegram": "Отправить переписку Диме",
+    "exporting": "Отправляю…",
+    "exportSuccess": "Отправлено в Telegram",
+    "exportError": "Не получилось отправить переписку",
+    "clearChat": "Очистить чат",
+    "clearConfirm": "Очистить переписку?",
+    "clearSuccess": "История очищена"
   },
   "brief": {
     "title": "Загрузка ТЗ на оценку",

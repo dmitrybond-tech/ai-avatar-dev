@@ -17,6 +17,7 @@ import type {
 export const CONFIG_ENDPOINT = "/config";
 export const ASK_ENDPOINT = "/ask";
 export const EXPORT_TELEGRAM_ENDPOINT = "/export/telegram";
+export const CLEAR_CHAT_ENDPOINT = "/chat/clear";
 export const CLIENT_LOG_ENDPOINT = "/client-log";
 
 // New skills endpoints
@@ -229,19 +230,43 @@ export async function postChat(payload: ChatAskPayload, signal?: AbortSignal): P
 
 export async function postChatExport(payload: ChatExportPayload): Promise<void> {
   const sanitizedMessages = sanitizeMessages(payload.messages);
+  // Transform to backend format: { session_id, persona, messages, meta }
+  const backendPayload = {
+    session_id: payload.meta?.session_id || "unknown",
+    persona: payload.meta?.persona || "dima",
+    messages: sanitizedMessages.map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+      ts: new Date().toISOString(),
+    })),
+    meta: payload.meta,
+  };
   const r = await apiFetch(EXPORT_TELEGRAM_ENDPOINT, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      ...payload,
-      messages: sanitizedMessages,
-    }),
+    body: JSON.stringify(backendPayload),
   });
   if (!r.ok) {
     const snippet = await r.text().catch(() => "");
     throw new ChatRequestError(
       r.status,
       r.url || `${getApiBaseUrl()}${EXPORT_TELEGRAM_ENDPOINT}`,
+      snippet.slice(0, 200),
+    );
+  }
+}
+
+export async function postChatClear(sessionId: string): Promise<void> {
+  const r = await apiFetch(CLEAR_CHAT_ENDPOINT, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  if (!r.ok) {
+    const snippet = await r.text().catch(() => "");
+    throw new ChatRequestError(
+      r.status,
+      r.url || `${getApiBaseUrl()}${CLEAR_CHAT_ENDPOINT}`,
       snippet.slice(0, 200),
     );
   }

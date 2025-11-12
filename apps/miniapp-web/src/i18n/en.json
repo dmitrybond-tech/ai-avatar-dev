@@ -15,7 +15,14 @@
     "smartLLMOff": "Off",
     "smartLLMUnavailable": "Unavailable",
     "modeLLM": "Mode: LLM",
-    "modeSkills": "Mode: Skills"
+    "modeSkills": "Mode: Skills",
+    "exportToTelegram": "Send to Dima",
+    "exporting": "Sending…",
+    "exportSuccess": "Sent to Telegram",
+    "exportError": "Could not send transcript",
+    "clearChat": "Clear chat",
+    "clearConfirm": "Clear conversation?",
+    "clearSuccess": "History cleared"
   },
   "brief": {
     "title": "Upload brief for estimate",

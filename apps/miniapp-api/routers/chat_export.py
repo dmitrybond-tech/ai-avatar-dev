@@ -319,3 +319,45 @@ async def ask_grok(request: Request, payload: AskGrokRequest) -> AskGrokResponse
         from_fatcontext=True,
     )
 
+
+class ClearChatRequest(BaseModel):
+    """Request model for clearing chat."""
+    session_id: str = Field(..., description="Chat session ID to clear")
+
+
+class ClearChatResponse(BaseModel):
+    """Response model for clearing chat."""
+    ok: bool
+
+
+@router.post("/clear", response_model=ClearChatResponse)
+async def clear_chat(payload: ClearChatRequest) -> ClearChatResponse:
+    """
+    Clear server-side chat session files.
+    
+    If CHAT_DIR is used, deletes session files. Always returns success.
+    """
+    chat_store = get_chat_store()
+    session_id = payload.session_id
+    
+    # Try to delete session files if they exist
+    try:
+        import glob
+        chat_dir = chat_store._chat_dir
+        pattern = str(chat_dir / f"session-{session_id}-*.jsonl")
+        files = glob.glob(pattern)
+        deleted_count = 0
+        for file_path in files:
+            try:
+                import os as os_module
+                os_module.remove(file_path)
+                deleted_count += 1
+            except Exception as exc:
+                logger.warning("Failed to delete session file %s: %s", file_path, exc)
+        if deleted_count > 0:
+            logger.info("Cleared %d session files for session=%s", deleted_count, session_id)
+    except Exception as exc:
+        logger.warning("Failed to clear session files for session=%s: %s", session_id, exc)
+        # Don't fail the request - client will clear local state anyway
+    
+    return ClearChatResponse(ok=True)

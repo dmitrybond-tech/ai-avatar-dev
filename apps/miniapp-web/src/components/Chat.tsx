@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChatRequestError, getChatConfig, postChat, postChatExport, EXPORT_TELEGRAM_ENDPOINT, askGrok, askSkills } from "../api/client";
+import { ChatRequestError, getChatConfig, postChat, postChatExport, postChatClear, EXPORT_TELEGRAM_ENDPOINT, askGrok, askSkills } from "../api/client";
 import type { ChatAskPayload, ChatConfig, ChatExportPayload, ChatMessageDto } from "../types";
 import type { Locale } from "../shared/i18n/resolveLocale";
 import { useChatSessionId } from "../hooks/useChatSessionId";
@@ -99,6 +99,7 @@ export function ChatBox({ lang }: ChatBoxProps) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [config, setConfig] = useState<ChatConfig>(fallbackConfig);
   const [error, setError] = useState<ErrorState | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
@@ -356,14 +357,10 @@ export function ChatBox({ lang }: ChatBoxProps) {
     }
   };
 
-  const finishAndSend = async () => {
+  const handleExportToTelegram = async () => {
     if (exporting || exportedRef.current) return;
     if (!config.telegramExport) {
-      setExportMessage(
-        lang === "en"
-          ? "Telegram export is disabled."
-          : "Отправка в Telegram отключена."
-      );
+      setExportMessage(t("chat.exportError"));
       return;
     }
     setExportMessage(null);
@@ -384,12 +381,7 @@ export function ChatBox({ lang }: ChatBoxProps) {
         );
         return;
       }
-      // Generate conv_id: miniapp-<ISO_DATETIME>-<6rand>
-      const now = new Date().toISOString().replace(/[:.]/g, "");
-      const rand = Math.random().toString(36).slice(2, 8);
-      const convId = `miniapp-${now}-${rand}`;
       const exportPayload: ChatExportPayload = {
-        conv_id: convId,
         lang,
         messages: conversation,
         meta: {
@@ -401,10 +393,10 @@ export function ChatBox({ lang }: ChatBoxProps) {
       };
       await postChatExport(exportPayload);
       exportedRef.current = true;
-      setExportMessage(lang === "en" ? "Sent to Telegram." : "Отправила переписку в Telegram.");
+      setExportMessage(t("chat.exportSuccess"));
     } catch (err) {
       exportedRef.current = false;
-      const base = lang === "en" ? "Could not send transcript." : "Не получилось отправить переписку.";
+      const base = t("chat.exportError");
       let message = base;
       if (err instanceof ChatRequestError && import.meta.env.DEV) {
         const detail = [err.status ? `status ${err.status}` : null, err.responseSnippet || null].filter(Boolean).join(" | ");
@@ -413,6 +405,42 @@ export function ChatBox({ lang }: ChatBoxProps) {
       setExportMessage(message);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleClearChat = async () => {
+    if (clearing) return;
+    const confirmed = window.confirm(t("chat.clearConfirm"));
+    if (!confirmed) return;
+    
+    setClearing(true);
+    try {
+      // Clear server-side session files (best effort)
+      try {
+        await postChatClear(sessionId);
+      } catch (err) {
+        // Don't fail if server clear fails - client will clear local state
+        if (import.meta.env.DEV) {
+          console.warn("Failed to clear server session:", err);
+        }
+      }
+      
+      // Clear local state
+      const introMsg: Msg = { id: "intro", role: "assistant", text: introText };
+      setMsgs([introMsg]);
+      serializeHistory(sessionKey, [introMsg]);
+      
+      setExportMessage(t("chat.clearSuccess"));
+      setTimeout(() => setExportMessage(null), 3000);
+    } catch (err) {
+      // Even if server call fails, clear local state
+      const introMsg: Msg = { id: "intro", role: "assistant", text: introText };
+      setMsgs([introMsg]);
+      serializeHistory(sessionKey, [introMsg]);
+      setExportMessage(t("chat.clearSuccess"));
+      setTimeout(() => setExportMessage(null), 3000);
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -499,32 +527,22 @@ export function ChatBox({ lang }: ChatBoxProps) {
         </button>
       </div>
 
-      {(inTelegram || tgInitData) && (
-        <div className="flex items-center gap-2">
-          <button
-            className="rounded border border-black px-3 py-2 text-sm font-medium disabled:opacity-60"
-            onClick={finishAndSend}
-            disabled={exporting || !hasUserMessages || !config.telegramExport}
-          >
-            {exporting
-              ? lang === "en"
-                ? "Sending…"
-                : "Отправляю…"
-              : lang === "en"
-                ? "Finish & Send to Telegram"
-                : "Завершить и отправить в Telegram"}
-          </button>
-          <span className="text-xs text-gray-500">
-            {config.telegramExport
-              ? lang === "en"
-                ? "I'll send the whole chat to Dima in Telegram."
-                : "Отправлю всю переписку Диме в Telegram."
-              : lang === "en"
-                ? "Telegram export is unavailable right now."
-                : "Отправка в Telegram сейчас недоступна."}
-          </span>
-        </div>
-      )}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          className="rounded border border-black px-3 py-2 text-sm font-medium disabled:opacity-60"
+          onClick={handleExportToTelegram}
+          disabled={exporting || !hasUserMessages || !config.telegramExport}
+        >
+          {exporting ? t("chat.exporting") : t("chat.exportToTelegram")}
+        </button>
+        <button
+          className="rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-600 disabled:opacity-60"
+          onClick={handleClearChat}
+          disabled={clearing || !hasUserMessages}
+        >
+          {t("chat.clearChat")}
+        </button>
+      </div>
 
       {error && (
         <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
