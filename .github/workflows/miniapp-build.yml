@@ -61,6 +61,7 @@ jobs:
         run: |
           api_image="${{ steps.prep.outputs.api_image }}"
           version_tag="${{ steps.prep.outputs.version_tag }}"
+          # Ensure SPA image uses the relative /api base path behind Caddy
           docker buildx build \
             --platform linux/amd64 \
             -t "${api_image}:main" \

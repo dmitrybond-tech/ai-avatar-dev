@@ -119,6 +119,7 @@ jobs:
         id: build_args
         run: |
           if [ "${{ matrix.service }}" = "web" ]; then
+            # Use relative API path so Caddy can proxy /api requests
             echo "value=VITE_API_BASE_URL=/api" >> "$GITHUB_OUTPUT"
           else
             echo "value=" >> "$GITHUB_OUTPUT"
