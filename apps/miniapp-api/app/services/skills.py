@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import csv
 import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Iterable, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence
 
 import pandas as pd
 from rapidfuzz import fuzz
@@ -19,6 +20,62 @@ from ..core import env as env_utils
 
 logger = logging.getLogger(__name__)
 
+# CSV header aliases for tolerant ingestion
+CSV_ALIASES = {
+    "key": ["key", "slug", "id"],
+    "title_en": ["title_en", "name_en", "en_title", "en_name", "title"],
+    "title_ru": ["title_ru", "name_ru", "ru_title", "ru_name"],
+    "short_en": ["short_en", "summary_en", "en_short", "en_summary"],
+    "short_ru": ["short_ru", "summary_ru", "ru_short", "ru_summary"],
+    "tags": ["tags", "labels", "categories"],
+    "bullets_en": ["bullets_en", "points_en", "en_bullets"],
+    "bullets_ru": ["bullets_ru", "points_ru", "ru_bullets"],
+    "examples_en": ["examples_en", "cases_en", "en_examples"],
+    "examples_ru": ["examples_ru", "cases_ru", "ru_examples"],
+    "weight": ["weight", "order", "prio"],
+    "pinned": ["pinned", "pin", "featured"],
+}
+
+
+def _h(row: Dict[str, str], key: str) -> str:
+    """Get value from row using CSV_ALIASES, return empty string if not found.
+    Assumes row keys are already normalized to lowercase."""
+    for name in CSV_ALIASES[key]:
+        name_lower = name.lower()
+        if name_lower in row and row[name_lower] is not None:
+            val = row[name_lower]
+            return str(val).strip() if val else ""
+    return ""
+
+
+def _split_list(val: str) -> List[str]:
+    """Split tags by ; or ,; trim spaces; de-dup."""
+    if not val:
+        return []
+    parts = [p.strip(" \t\r\n-•") for p in val.replace(";", ",").split(",")]
+    return [p for p in parts if p]
+
+
+def _split_lines(val: str) -> List[str]:
+    """Split bullets/examples by \\n; drop empty lines; trim."""
+    if not val:
+        return []
+    lines = [l.strip(" \t\r\n-•") for l in val.splitlines()]
+    return [l for l in lines if l]
+
+
+def _to_bool(val: str) -> bool:
+    """Coerce to bool: accepts 1/true/yes/y/да (case-insensitive)."""
+    return str(val).strip().lower() in {"1", "true", "yes", "y", "да"}
+
+
+def _to_int(val: str, default: int = 0) -> int:
+    """Coerce to int with default fallback."""
+    try:
+        return int(str(val).strip())
+    except (ValueError, AttributeError):
+        return default
+
 
 def _clean(value: object) -> str:
     if value is None:
@@ -26,19 +83,6 @@ def _clean(value: object) -> str:
     if isinstance(value, str):
         return value.strip()
     return str(value).strip()
-
-
-def _split_lines(value: object) -> List[str]:
-    text = _clean(value)
-    if not text:
-        return []
-    normalized = text.replace(";", "\n")
-    lines = []
-    for raw in normalized.splitlines():
-        cleaned = raw.strip(" •-\t")
-        if cleaned:
-            lines.append(cleaned)
-    return lines
 
 
 def _split_tags(value: object) -> List[str]:
@@ -62,6 +106,8 @@ class SkillRecord:
     examples_ru: List[str]
     tags: List[str]
     source: str
+    weight: int = 0
+    pinned: bool = False
 
     def title(self, lang: str) -> str:
         if lang.startswith("ru"):
@@ -101,8 +147,8 @@ class SkillsRepository:
         self._notion_timeout = float(env_utils.notion_timeout())
 
         default_csv = Path(__file__).resolve().parent.parent.parent / "data" / "skills.csv"
-        self._csv_path = Path(os.getenv("SKILLS_CSV_PATH") or default_csv)
-        self._mode = (os.getenv("SKILLS_SOURCE") or "auto").strip().lower()
+        self._csv_path = Path(os.getenv("SKILLS_CSV_PATH") or "/app/data/skills.csv" or str(default_csv))
+        self._source = (os.getenv("SKILLS_SOURCE") or "auto").strip().lower()
 
     def refresh(self) -> SkillsSnapshot:
         with self._lock:
@@ -116,52 +162,57 @@ class SkillsRepository:
             return self._snapshot
 
     def _load_snapshot(self) -> SkillsSnapshot:
-        notion_skills: List[SkillRecord] = []
-        csv_skills: List[SkillRecord] = []
-        source = "unknown"
+        src = self._source
+        csv_file = self._csv_path
+        use_notion = bool(os.getenv("NOTION_API_KEY") and os.getenv("NOTION_DB_SKILLS"))
+        skills: List[SkillRecord] = []
         notion_ok = False
-        csv_ok = False
+        csv_used = False
 
-        if self._mode in {"auto", "notion"}:
-            notion_skills = self._load_from_notion()
-            if notion_skills:
-                notion_ok = True
-                source = "notion"
+        if src == "csv":
+            skills = _load_csv(csv_file)
+            csv_used = True
+        elif src == "notion":
+            skills, notion_ok = self._load_from_notion()
+        else:  # auto
+            if use_notion:
+                skills, notion_ok = self._load_from_notion()
+            if not skills:
+                skills = _load_csv(csv_file)
+                csv_used = True
 
-        if (self._mode in {"auto", "csv"} and not notion_skills) or self._mode == "csv":
-            csv_skills = self._load_from_csv()
-            if csv_skills:
-                csv_ok = True
-                if not notion_skills:
-                    source = "csv"
-
-        skills = notion_skills or csv_skills
         logger.info(
             "Loaded %s skills (source=%s, notion=%s, csv=%s, mode=%s)",
             len(skills),
-            source,
+            "csv" if csv_used else ("notion" if notion_ok else "unknown"),
             notion_ok,
-            csv_ok,
-            self._mode,
+            csv_used,
+            src,
         )
-        return SkillsSnapshot(skills=skills, source=source, notion=notion_ok, csv_fallback=csv_ok and not notion_ok)
+        return SkillsSnapshot(
+            skills=skills,
+            source="csv" if csv_used else ("notion" if notion_ok else "unknown"),
+            notion=notion_ok,
+            csv_fallback=csv_used,
+        )
 
     # Notion helpers -----------------------------------------------------
 
-    def _load_from_notion(self) -> List[SkillRecord]:
+    def _load_from_notion(self) -> tuple[List[SkillRecord], bool]:
+        """Load from Notion, return (records, success)."""
         if not self._notion_api_key or not self._notion_db or Client is None:
-            return []
+            return [], False
         try:
             client = Client(auth=self._notion_api_key, timeout=self._notion_timeout)
         except Exception as exc:  # pragma: no cover - network auth failure
             logger.warning("Failed to init Notion client: %s", exc)
-            return []
+            return [], False
 
         try:
             response = client.databases.query(database_id=self._notion_db)  # type: ignore[call-arg]
         except Exception as exc:  # pragma: no cover - network failure
             logger.warning("Notion query failed: %s", exc)
-            return []
+            return [], False
         results = response.get("results", [])
 
         records: List[SkillRecord] = []
@@ -196,89 +247,11 @@ class SkillsRepository:
                     examples_ru=examples_ru or bullets_ru,
                     tags=tags,
                     source="notion",
+                    weight=0,
+                    pinned=False,
                 )
             )
-        return records
-
-    # CSV helpers --------------------------------------------------------
-
-    def _load_from_csv(self) -> List[SkillRecord]:
-        if not self._csv_path.exists():
-            logger.warning("Skills CSV path %s does not exist", self._csv_path)
-            return []
-        try:
-            df = pd.read_csv(self._csv_path)
-        except Exception as exc:  # pragma: no cover - csv failure
-            logger.warning("Failed to read CSV %s: %s", self._csv_path, exc)
-            return []
-
-        records: List[SkillRecord] = []
-        for row in df.to_dict(orient="records"):
-            normalized = {str(k).lower(): row[k] for k in row}
-            key = _clean(
-                normalized.get("key")
-                or normalized.get("slug")
-                or normalized.get("id")
-                or normalized.get("title")
-                or normalized.get("titleen")
-                or normalized.get("titleru")
-            )
-            title_en = _clean(normalized.get("titleen") or normalized.get("title") or normalized.get("title_en"))
-            title_ru = _clean(normalized.get("titleru") or normalized.get("title_ru") or normalized.get("titlerussian"))
-            short_en = _clean(normalized.get("shorten") or normalized.get("short_en") or normalized.get("short"))
-            short_ru = _clean(normalized.get("shortru") or normalized.get("short_ru") or normalized.get("shortrussian"))
-            bullets_en = _split_lines(
-                normalized.get("bulletsen")
-                or normalized.get("bullets_en")
-                or normalized.get("bullets")
-                or normalized.get("examplesen")
-            )
-            bullets_ru = _split_lines(
-                normalized.get("bulletsru")
-                or normalized.get("bullets_ru")
-                or normalized.get("examplesru")
-                or normalized.get("examples_ru")
-            )
-            examples_en = _split_lines(
-                normalized.get("examplesen")
-                or normalized.get("examples_en")
-                or normalized.get("caseen")
-                or normalized.get("casesen")
-            )
-            examples_ru = _split_lines(
-                normalized.get("examplesru")
-                or normalized.get("examples_ru")
-                or normalized.get("caseru")
-                or normalized.get("casesru")
-            )
-            tags = _split_tags(
-                normalized.get("tags")
-                or normalized.get("tagsen")
-                or normalized.get("tags_ru")
-                or normalized.get("tagsru")
-            )
-
-            if not key:
-                key = _slugify(title_en or title_ru or "skill")
-            if not (title_en or title_ru):
-                continue
-
-            records.append(
-                SkillRecord(
-                    key=key,
-                    title_en=title_en or title_ru,
-                    title_ru=title_ru or title_en,
-                    short_en=short_en or short_ru,
-                    short_ru=short_ru or short_en,
-                    bullets_en=bullets_en,
-                    bullets_ru=bullets_ru,
-                    examples_en=examples_en or bullets_en,
-                    examples_ru=examples_ru or bullets_ru,
-                    tags=tags,
-                    source="csv",
-                )
-            )
-        return records
+        return records, len(records) > 0
 
     # Ranking ------------------------------------------------------------
 
@@ -310,6 +283,63 @@ class SkillsRepository:
                 scored.append((score, skill))
         scored.sort(key=lambda item: item[0], reverse=True)
         return [skill for _, skill in scored[:top_k]]
+
+
+def _load_csv(path: Path) -> List[SkillRecord]:
+    """Load skills from CSV with tolerant header aliases."""
+    if not path.exists():
+        logger.warning("Skills CSV path %s does not exist", path)
+        return []
+    items: List[SkillRecord] = []
+    try:
+        with path.open(encoding="utf-8", newline="") as f:
+            rdr = csv.DictReader(f)
+            # Normalize row keys to lowercase for case-insensitive matching
+            normalized_rows = []
+            for row in rdr:
+                normalized = {str(k).lower(): v for k, v in row.items()}
+                normalized_rows.append(normalized)
+            for i, row in enumerate(normalized_rows):
+                key = _h(row, "key") or f"skill_{i}"
+                title_en = _h(row, "title_en") or key
+                title_ru = _h(row, "title_ru") or title_en
+                short_en = _h(row, "short_en")
+                short_ru = _h(row, "short_ru") or short_en
+                tags = _split_list(_h(row, "tags"))
+                bullets_en = _split_lines(_h(row, "bullets_en"))
+                bullets_ru = _split_lines(_h(row, "bullets_ru"))
+                examples_en = _split_lines(_h(row, "examples_en"))
+                examples_ru = _split_lines(_h(row, "examples_ru"))
+                weight = _to_int(_h(row, "weight"), 0)
+                pinned = _to_bool(_h(row, "pinned"))
+
+                if not (title_en or title_ru):
+                    continue
+
+                items.append(
+                    SkillRecord(
+                        key=key,
+                        title_en=title_en,
+                        title_ru=title_ru,
+                        short_en=short_en,
+                        short_ru=short_ru,
+                        tags=tags,
+                        bullets_en=bullets_en,
+                        bullets_ru=bullets_ru,
+                        examples_en=examples_en,
+                        examples_ru=examples_ru,
+                        weight=weight,
+                        pinned=pinned,
+                        source="csv",
+                    )
+                )
+    except Exception as exc:  # pragma: no cover - csv failure
+        logger.warning("Failed to read CSV %s: %s", path, exc)
+        return []
+
+    # stable ordering: pinned desc, weight desc, key asc
+    items.sort(key=lambda s: (-int(getattr(s, "pinned", False)), -int(getattr(s, "weight", 0)), s.key))
+    return items
 
 
 def _slugify(text: str) -> str:

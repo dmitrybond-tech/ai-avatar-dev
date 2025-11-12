@@ -129,8 +129,18 @@ async def legacy_openapi() -> Dict[str, Any]:
 # --- API endpoints under /api prefix ---
 
 @api_router.get("/healthz")
-async def api_healthz() -> Dict[str, bool]:
-    return {"ok": True}
+async def api_healthz(request: Request) -> Dict[str, Any]:
+    """Health check endpoint with skills source info."""
+    repo = getattr(request.app.state, "skills_repo", None)
+    if repo:
+        snap = repo.snapshot()
+        return {
+            "ok": True,
+            "skills": {
+                "source": snap.source or "unknown",
+            },
+        }
+    return {"ok": True, "skills": {"source": "unknown"}}
 
 
 @api_router.get("/cal/link", response_model=CalLinkResponse)
