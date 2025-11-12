@@ -1,0 +1,23 @@
+services:
+  api:
+    env_file:
+      - .env.miniapp
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-grok}
+      GROK_MODEL: ${GROK_MODEL:-grok-4}
+      GROK_BASE_URL: ${GROK_BASE_URL:-https://api.x.ai}
+      GROK_MAX_TOKENS: ${GROK_MAX_TOKENS:-512}
+      GROK_TEMPERATURE: ${GROK_TEMPERATURE:-0.3}
+      XAI_API_KEY: ${XAI_API_KEY}
+
+  bot:
+    env_file:
+      - .env.miniapp
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-grok}
+      GROK_MODEL: ${GROK_MODEL:-grok-4}
+      GROK_BASE_URL: ${GROK_BASE_URL:-https://api.x.ai}
+      GROK_MAX_TOKENS: ${GROK_MAX_TOKENS:-512}
+      GROK_TEMPERATURE: ${GROK_TEMPERATURE:-0.3}
+      XAI_API_KEY: ${XAI_API_KEY}
+

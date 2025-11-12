@@ -6,6 +6,7 @@ from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Literal
 
+import httpx
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command
@@ -44,6 +45,7 @@ if not BOT_TOKEN:
 BOT_NAME = os.getenv("TELEGRAM_BOT_NAME", "miniapp_bot")
 TELEGRAM_MINIAPP_URL = os.getenv("TELEGRAM_MINIAPP_URL", "").strip()
 TELEGRAM_BOOKING_URL = os.getenv("TELEGRAM_BOOKING_URL", "").strip()
+API_BASE_URL = os.getenv("API_BASE_URL", "http://api:8000").strip()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("miniapp-bot")
@@ -94,10 +96,24 @@ class SessionState(BaseModel):
     lang: str = DEFAULT_LANG
     scene: str = "start"
     awaiting_brief: bool = False
+    smart_llm_enabled: bool = False
 
 
 # Simple in-memory sessions keyed by user id
 _sessions: dict[int, SessionState] = {}
+
+# Smart LLM toggle state (per-user, in-memory, process-lifetime)
+_smart_llm_toggle: dict[int, bool] = {}
+
+
+def get_smart_llm_enabled(user_id: int) -> bool:
+    """Get Smart LLM toggle state for user (default OFF)."""
+    return _smart_llm_toggle.get(user_id, False)
+
+
+def set_smart_llm_enabled(user_id: int, enabled: bool) -> None:
+    """Set Smart LLM toggle state for user."""
+    _smart_llm_toggle[user_id] = enabled
 
 
 def get_session(user_id: int) -> SessionState:
@@ -114,6 +130,15 @@ def _ensure_menu_locale(lang: str) -> MenuLocale:
 
 def _has_any_menu_button() -> bool:
     return bool(TELEGRAM_MINIAPP_URL or TELEGRAM_BOOKING_URL)
+
+
+def build_smart_llm_toggle(user_id: int, locale: MenuLocale) -> InlineKeyboardMarkup:
+    """Build inline keyboard for Smart LLM toggle."""
+    enabled = get_smart_llm_enabled(user_id)
+    status_text = "ON" if enabled else "OFF"
+    toggle_text = f"Smart LLM reply: {status_text}"
+    callback_data = "smart_llm:off" if enabled else "smart_llm:on"
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=toggle_text, callback_data=callback_data)]])
 
 
 def build_main_menu(locale: MenuLocale) -> InlineKeyboardMarkup:
@@ -333,6 +358,104 @@ async def on_brief_button(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
     session = get_session(user_id)
     await _send_menu_hint(message, session.lang)
+
+
+@dp.message(Command("smart"))
+async def cmd_smart(message: Message) -> None:
+    """Handle /smart command with on/off arguments."""
+    user_id = message.from_user.id if message.from_user else 0
+    session = get_session(user_id)
+    args = message.text.split()[1:] if message.text else []
+    
+    if args and args[0].lower() == "on":
+        set_smart_llm_enabled(user_id, True)
+        await message.answer(
+            "✅ Smart LLM reply enabled. Ask me anything about Dima's skills!",
+            reply_markup=build_smart_llm_toggle(user_id, _ensure_menu_locale(session.lang)),
+        )
+    elif args and args[0].lower() == "off":
+        set_smart_llm_enabled(user_id, False)
+        await message.answer(
+            "❌ Smart LLM reply disabled.",
+            reply_markup=build_smart_llm_toggle(user_id, _ensure_menu_locale(session.lang)),
+        )
+    else:
+        # Show current status
+        enabled = get_smart_llm_enabled(user_id)
+        status_text = "ON" if enabled else "OFF"
+        await message.answer(
+            f"Smart LLM reply is currently {status_text}.\n\n"
+            "Use /smart on to enable or /smart off to disable.\n"
+            "Or use the toggle button below:",
+            reply_markup=build_smart_llm_toggle(user_id, _ensure_menu_locale(session.lang)),
+        )
+
+
+@dp.callback_query(F.data.startswith("smart_llm:"))
+async def on_smart_llm_toggle(cb: CallbackQuery) -> None:
+    """Handle Smart LLM toggle button callback."""
+    user_id = cb.from_user.id if cb.from_user else 0
+    session = get_session(user_id)
+    action = cb.data.split(":")[1]
+    
+    if action == "on":
+        set_smart_llm_enabled(user_id, True)
+        await cb.answer("✅ Smart LLM reply enabled")
+        await cb.message.edit_reply_markup(reply_markup=build_smart_llm_toggle(user_id, _ensure_menu_locale(session.lang)))
+    elif action == "off":
+        set_smart_llm_enabled(user_id, False)
+        await cb.answer("❌ Smart LLM reply disabled")
+        await cb.message.edit_reply_markup(reply_markup=build_smart_llm_toggle(user_id, _ensure_menu_locale(session.lang)))
+
+
+async def _call_skills_ask_api(query: str, lang: str) -> str | None:
+    """Call /api/skills/ask endpoint and return answer or None on error."""
+    try:
+        url = f"{API_BASE_URL}/api/skills/ask"
+        payload = {"q": query, "lang": lang}
+        timeout = httpx.Timeout(30.0, connect=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=payload)
+            if 200 <= resp.status_code < 300:
+                data = resp.json()
+                return data.get("answer")
+            else:
+                logger.warning(f"Skills ask API returned {resp.status_code}: {resp.text[:200]}")
+                return None
+    except httpx.TimeoutException:
+        logger.error("Skills ask API timeout")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to call skills ask API: {e}")
+        return None
+
+
+@dp.message(F.text & ~F.text.startswith("/"))
+async def on_text_message(message: Message, bot: Bot) -> None:
+    """Handle text messages - check for Smart LLM toggle."""
+    user_id = message.from_user.id if message.from_user else 0
+    session = get_session(user_id)
+    text = message.text or ""
+    
+    # If awaiting brief, handle that first
+    if user_id in _awaiting_brief:
+        await on_any_message(message, bot)
+        return
+    
+    # Check if Smart LLM is enabled
+    if get_smart_llm_enabled(user_id) and text.strip():
+        # Call the API
+        answer = await _call_skills_ask_api(text.strip(), session.lang)
+        if answer:
+            await message.answer(answer, reply_markup=build_smart_llm_toggle(user_id, _ensure_menu_locale(session.lang)))
+        else:
+            await message.answer(
+                "Sorry, I couldn't get an answer right now. Please try again later.",
+                reply_markup=build_smart_llm_toggle(user_id, _ensure_menu_locale(session.lang)),
+            )
+        return
+    
+    # Otherwise, ignore non-command text messages when Smart LLM is off
 
 
 @dp.message(F.document | F.photo | F.text)
