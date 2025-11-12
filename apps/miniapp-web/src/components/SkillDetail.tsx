@@ -35,11 +35,14 @@ export function SkillDetailView({ skill, lang }: SkillDetailProps) {
       {skill.bullets?.length ? (
         <section className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-            {sectionLabels.bullets[lang]}
+            {lang === 'ru' ? 'Что делаю' : 'What I do'}
           </h2>
-          <ul className="list-disc space-y-2 pl-5 text-sm leading-relaxed text-gray-800">
+          <ul className="space-y-2 text-sm leading-relaxed text-gray-800">
             {skill.bullets.map((line, index) => (
-              <li key={index}>{line}</li>
+              <li key={index} className="flex items-start gap-2">
+                <span className="mt-1 flex-shrink-0 text-gray-400">✓</span>
+                <span>{line}</span>
+              </li>
             ))}
           </ul>
         </section>
@@ -48,11 +51,13 @@ export function SkillDetailView({ skill, lang }: SkillDetailProps) {
       {skill.examples?.length ? (
         <section className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-            {sectionLabels.examples[lang]}
+            {lang === 'ru' ? 'Примеры' : 'Examples'}
           </h2>
           <div className="space-y-2 text-sm leading-relaxed text-gray-700">
             {skill.examples.map((example, index) => (
-              <p key={index}>{example}</p>
+              <p key={index} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                {example}
+              </p>
             ))}
           </div>
         </section>

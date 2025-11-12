@@ -261,8 +261,7 @@ export function SkillsPage({ lang, selectedSlug, onBack, onSelect, onCloseDetail
             aria-modal="true"
             aria-label={activeDetail?.title ?? selectedSlug ?? titles[lang]}
             tabIndex={-1}
-            className="relative modal-maxh w-full overflow-auto max-w-lg rounded-3xl bg-white p-5 shadow-xl focus-visible:outline-none"
-            style={{ marginTop: '60px' }}
+            className="relative modal-offset-mt modal-maxh w-full overflow-auto max-w-lg rounded-3xl bg-white p-5 shadow-xl focus-visible:outline-none"
             onClick={(event) => event.stopPropagation()}
           >
             <button

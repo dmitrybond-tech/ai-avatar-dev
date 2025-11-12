@@ -1,6 +1,7 @@
 import { apiFetch, getApiBaseUrl } from "../lib/api.ts";
 import { apiUrl } from "../shared/api.ts";
 import type { Locale } from "../shared/i18n/resolveLocale";
+import { mapList, mapDetail } from "../shared/skillsAdapter.ts";
 import type {
   TasksStatusResponse,
   CalLinkResponse,
@@ -28,7 +29,7 @@ function ensureStringArray(value: unknown): string[] {
 
 export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<SkillCard[]> {
   const qs = `?lang=${lang}`;
-  const r = await fetch(apiUrl(`/skills${qs}`), {
+  const r = await fetch(apiUrl(`/api/skills${qs}`), {
     signal,
     headers: {
       "X-Locale": lang,
@@ -41,22 +42,12 @@ export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<Ski
   const data = await r.json();
   // Guard: handle both array and {items,count} shapes
   const items = Array.isArray(data) ? data : (data?.items || []);
-  if (!Array.isArray(items)) {
-    return [];
-  }
-  return items
-    .map((item) => ({
-      slug: typeof item?.slug === "string" ? item.slug : "",
-      title: typeof item?.title === "string" ? item.title : "",
-      short: typeof item?.short === "string" ? item.short : "",
-      tags: ensureStringArray(item?.tags),
-    }))
-    .filter((item) => item.slug && item.title);
+  return mapList(items);
 }
 
 export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortSignal): Promise<SkillDetail> {
   const qs = `?lang=${lang}`;
-  const r = await fetch(apiUrl(`/skills/${encodeURIComponent(slug)}${qs}`), {
+  const r = await fetch(apiUrl(`/api/skills/${encodeURIComponent(slug)}${qs}`), {
     signal,
     headers: {
       "X-Locale": lang,
@@ -67,14 +58,7 @@ export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortS
     throw new Error(`Skill ${slug} not found (status ${r.status})`);
   }
   const payload = await r.json();
-  return {
-    slug: typeof payload?.slug === "string" ? payload.slug : slug,
-    title: typeof payload?.title === "string" ? payload.title : slug,
-    short: typeof payload?.short === "string" ? payload.short : undefined,
-    tags: ensureStringArray(payload?.tags),
-    bullets: ensureStringArray(payload?.bullets),
-    examples: ensureStringArray(payload?.examples),
-  };
+  return mapDetail(payload);
 }
 
 export type SkillsAskRequest = {
