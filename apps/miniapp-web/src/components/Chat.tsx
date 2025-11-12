@@ -5,6 +5,7 @@ import type { Locale } from "../shared/i18n/resolveLocale";
 import { useChatSessionId } from "../hooks/useChatSessionId";
 import { getTelegramWebApp, isTelegramWebView } from "../lib/tg";
 import { apiUrl } from "../lib/api";
+import { streamReply } from "../lib/sse";
 
 type Msg = {
   id: string;
@@ -20,7 +21,7 @@ type ErrorState = { message: string; detail?: string; status?: number };
 type ChatBoxProps = { lang: Locale };
 
 const INTRO_RU = "Привет! Я ассистент Димы. Подскажу по его компетенциям и текущим проектам.";
-const INTRO_EN = "Hi! I’m Dima’s assistant. I can share what he is working on and how he can help.";
+const INTRO_EN = "Hi! I'm Dima's assistant. I can share what he is working on and how he can help.";
 const HISTORY_PREFIX = "chat_history:";
 
 const normalizeStringArray = (value: unknown): string[] => {
@@ -83,7 +84,7 @@ export function ChatBox({ lang }: ChatBoxProps) {
     if (lang === "en") {
       return persona === "dima"
         ? INTRO_EN
-        : `Hi! I’m ${persona}'s assistant. I can share what they are working on.`;
+        : `Hi! I'm ${persona}'s assistant. I can share what they are working on.`;
     }
     return persona === "dima"
       ? INTRO_RU
@@ -453,7 +454,7 @@ export function ChatBox({ lang }: ChatBoxProps) {
           <span className="text-xs text-gray-500">
             {config.telegramExport
               ? lang === "en"
-                ? "I’ll send the whole chat to Dima in Telegram."
+                ? "I'll send the whole chat to Dima in Telegram."
                 : "Отправлю всю переписку Диме в Telegram."
               : lang === "en"
                 ? "Telegram export is unavailable right now."
@@ -479,3 +480,66 @@ export function ChatBox({ lang }: ChatBoxProps) {
   );
 }
 
+// --- NVP: Minimal chat component for /chat route ---
+type Turn = { role: "user" | "assistant"; content: string };
+
+export default function Chat() {
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [text, setText] = useState("");
+  const [streaming, setStreaming] = useState(false);
+
+  async function sendREST() {
+    const message = text.trim();
+    if (!message) return;
+    setText("");
+    setTurns((t) => [...t, { role: "user", content: message }]);
+    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lang: "ru", history: turns, message }),
+    });
+    const data = await res.json();
+    setTurns((t) => [...t, { role: "assistant", content: data.reply }]);
+  }
+
+  async function sendSSE() {
+    const message = text.trim();
+    if (!message || streaming) return;
+    setText("");
+    setStreaming(true);
+    setTurns((t) => [...t, { role: "user", content: message }, { role: "assistant", content: "" }]);
+    const idx = turns.length + 1;
+    streamReply(message, (tok) => {
+      setTurns((t) => {
+        const copy = [...t];
+        copy[idx] = { role: "assistant", content: (copy[idx]?.content ?? "") + tok };
+        return copy;
+      });
+    }, () => setStreaming(false));
+  }
+
+  return (
+    <div className="flex flex-col gap-3 max-w-[720px] mx-auto p-4">
+      <div className="flex flex-col gap-2">
+        {turns.map((m, i) => (
+          <div key={i} className={m.role === "user" ? "self-end" : "self-start"}>
+            <div className="rounded-2xl px-3 py-2 shadow" style={{ background: m.role === "user" ? "#eef" : "#eee" }}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && sendREST()}
+          className="flex-1 border rounded-xl px-3 py-2"
+          placeholder="Напишите сообщение…"
+        />
+        <button onClick={sendREST} className="px-4 py-2 rounded-xl shadow">Send</button>
+        <button onClick={sendSSE} disabled={streaming} className="px-4 py-2 rounded-xl shadow">{streaming ? "Streaming…" : "Stream"}</button>
+      </div>
+    </div>
+  );
+}

@@ -5,9 +5,11 @@ import os
 import time
 from typing import Any, Dict, List
 
+import yaml
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .core import env as env_utils
@@ -146,6 +148,55 @@ async def cal_suggest(event: str = Query(default="intro-30m"), lang: str = Query
         "cta": cta.get(lang, cta[default_lang]),
         "url": url,
     }
+
+
+# --- NVP: Simple chat (REST) ---
+class ChatTurn(BaseModel):
+    role: str  # "user" | "assistant" | "system"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    lang: str = "ru"
+    history: List[ChatTurn] = []
+    message: str
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    usage: Dict[str, Any] = {}
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(req: ChatRequest) -> Dict[str, Any]:
+    msg = (req.message or "").strip()
+    base = "Понял. Давайте начнём. " if req.lang == "ru" else "Got it. Let's start. "
+    return {"reply": base + msg, "usage": {"provider": "stub", "tokens": 0}}
+
+
+# --- NVP: Streaming chat (SSE) ---
+def _sse_event(event: str, data: Dict[str, Any]) -> str:
+    # Server-Sent Events framing
+    import json
+    return "event: " + event + "\n" + "data: " + json.dumps(data, ensure_ascii=False) + "\n\n"
+
+
+@app.get("/chat/stream")
+async def chat_stream(request: Request, text: str, lang: str = "ru"):
+    async def gen():
+        # start
+        yield _sse_event("start", {"ok": True})
+        reply = (("Хм… " if lang == "ru" else "Hmm… ") + text).strip()
+        # naive tokenization
+        import asyncio
+        for token in reply.split():
+            if await request.is_disconnected():
+                break
+            yield _sse_event("token", {"t": token + " "})
+            # tiny delay to emulate streaming
+            await asyncio.sleep(0.03)
+        yield _sse_event("end", {"ok": True})
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 
 if __name__ == "__main__":
