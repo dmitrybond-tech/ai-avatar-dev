@@ -29,7 +29,7 @@ function ensureStringArray(value: unknown): string[] {
 
 export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<SkillCard[]> {
   const qs = `?lang=${lang}`;
-  const r = await fetch(apiUrl(`/api/skills${qs}`), {
+  const r = await fetch(apiUrl(`/skills${qs}`), {
     signal,
     headers: {
       "X-Locale": lang,
@@ -47,7 +47,7 @@ export async function getSkills(lang: Locale, signal?: AbortSignal): Promise<Ski
 
 export async function getSkillDetail(slug: string, lang: Locale, signal?: AbortSignal): Promise<SkillDetail> {
   const qs = `?lang=${lang}`;
-  const r = await fetch(apiUrl(`/api/skills/${encodeURIComponent(slug)}${qs}`), {
+  const r = await fetch(apiUrl(`/skills/${encodeURIComponent(slug)}${qs}`), {
     signal,
     headers: {
       "X-Locale": lang,
